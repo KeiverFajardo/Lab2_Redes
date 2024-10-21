@@ -58,6 +58,63 @@ void sr_send_icmp_error_packet(uint8_t type,
 
   /* COLOQUE AQUÍ SU CÓDIGO*/
 
+  /* Definir el tamaño del nuevo paquete ICMP (Ethernet + IP + ICMP) */
+  int icmpPacketLen = sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t) + sizeof(sr_icmp_t3_hdr_t);
+  uint8_t *icmpPacket = malloc(icmpPacketLen);
+
+  if (!icmpPacket) {
+    fprintf(stderr, "Error al asignar memoria para el paquete ICMP\n");
+    return;
+  }
+
+  /* Obtener los encabezados Ethernet e IP del paquete original */
+  sr_ethernet_hdr_t *origEthHdr = (sr_ethernet_hdr_t *) ipPacket;
+  sr_ip_hdr_t *origIpHdr = (sr_ip_hdr_t *) (ipPacket + sizeof(sr_ethernet_hdr_t));
+
+  /* Crear los nuevos encabezados Ethernet, IP e ICMP */
+  sr_ethernet_hdr_t *ethHdr = (sr_ethernet_hdr_t *) icmpPacket;
+  sr_ip_hdr_t *ipHdr = (sr_ip_hdr_t *) (icmpPacket + sizeof(sr_ethernet_hdr_t));
+  sr_icmp_t3_hdr_t *icmpHdr = (sr_icmp_t3_hdr_t *) (icmpPacket + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t));
+
+  /* -- Configuración del encabezado Ethernet -- */
+  /* Direcciones MAC: se invierten las de origen y destino del paquete original */
+  memcpy(ethHdr->ether_dhost, origEthHdr->ether_shost, ETHER_ADDR_LEN);
+  memcpy(ethHdr->ether_shost, origEthHdr->ether_dhost, ETHER_ADDR_LEN);
+  ethHdr->ether_type = htons(ethertype_ip);  /* Tipo de protocolo IP */
+
+  /* -- Configuración del encabezado IP -- */
+  ipHdr->ip_v = 4;  /* Versión IP (IPv4) */
+  ipHdr->ip_hl = sizeof(sr_ip_hdr_t) / 4;  /* Longitud del encabezado IP */
+  ipHdr->ip_tos = 0;  /* Tipo de servicio */
+  ipHdr->ip_len = htons(sizeof(sr_ip_hdr_t) + sizeof(sr_icmp_t3_hdr_t));  /* Longitud total del paquete IP */
+  ipHdr->ip_id = 0;  /* ID de fragmentación (0 si no se fragmenta) */
+  ipHdr->ip_off = htons(IP_DF);  /* Bandera "Don't Fragment" */
+  ipHdr->ip_ttl = 64;  /* Time to Live */
+  ipHdr->ip_p = ip_protocol_icmp;  /* Protocolo ICMP */
+  ipHdr->ip_src = ipHdr->ip_dst;  /* Dirección IP de origen (IP del router) */
+  ipHdr->ip_dst = ipDst;  /* Dirección IP de destino */
+  ipHdr->ip_sum = 0;  /* Inicializar el checksum */
+  ipHdr->ip_sum = cksum(ipHdr, sizeof(sr_ip_hdr_t));  /* Calcular el checksum IP */
+
+  /* -- Configuración del encabezado ICMP -- */
+  icmpHdr->icmp_type = type;  /* Tipo ICMP (por ejemplo, 3 para "Destination Unreachable") */
+  icmpHdr->icmp_code = code;  /* Código ICMP (por ejemplo, 1 para "Host Unreachable") */
+  icmpHdr->icmp_sum = 0;  /* Inicializar el checksum ICMP */
+  icmpHdr->unused = 0;
+  icmpHdr->next_mtu = 0;
+
+  /* Copiar los primeros 8 bytes del paquete IP original en el cuerpo del mensaje ICMP */
+  memcpy(icmpHdr->data, origIpHdr, ICMP_DATA_SIZE);
+
+  /* Calcular el checksum del paquete ICMP */
+  icmpHdr->icmp_sum = cksum(icmpHdr, sizeof(sr_icmp_t3_hdr_t));
+
+  /* -- Enviar el paquete ICMP -- */
+  sr_send_packet(sr, icmpPacket, icmpPacketLen, ethHdr->ether_dhost);
+
+  /* Liberar memoria asignada */
+  free(icmpPacket);
+
 } /* -- sr_send_icmp_error_packet -- */
 
 void sr_handle_ip_packet(struct sr_instance *sr,
