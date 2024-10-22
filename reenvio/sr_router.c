@@ -135,20 +135,28 @@ void sr_handle_ip_packet(struct sr_instance *sr,
   * - Sino, verificar TTL, ARP y reenviar si corresponde (puede necesitar una solicitud ARP y esperar la respuesta)
   * - No olvide imprimir los mensajes de depuración
   */
-
+  printf("****** -> 4444444.\n");
   /* Obtener el encabezado IP */
   sr_ip_hdr_t *ipHdr = (sr_ip_hdr_t *)(packet + sizeof(sr_ethernet_hdr_t));
-
+  printf("****** -> 55555555.\n");
   /* Verificar si el paquete es para una de mis interfaces */
-  struct sr_if *myInterface = sr_get_interface_given_ip(sr, ipHdr->ip_dst);
+  printf("Destination IP: %s\n", inet_ntoa(*(struct in_addr *)&ipHdr->ip_dst));
+  sr_print_if_list(sr);
+  struct sr_if *myInterface = sr_get_interface_given_ip(sr, inet_ntoa(*(struct in_addr *)&ipHdr->ip_dst));
+  printf("****** -> 6666666666.\n");
+
+  sr_print_if(myInterface);
+  printf("****** -> 16.\n");
   if (myInterface) {
     /* Si el paquete es para mí */
     printf("**** -> IP packet is for me.\n");
 
     /* Verificar si es un paquete ICMP echo request */
     if (ipHdr->ip_p == ip_protocol_icmp) {
+      printf("****** -> 777777777777.\n");
       sr_icmp_hdr_t *icmpHdr = (sr_icmp_hdr_t *)(packet + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t));
-      if (icmpHdr->icmp_type == 8) {  // ICMP echo request
+      printf("****** -> 88888888.\n");
+      if (icmpHdr->icmp_type == 8) {  /* ICMP echo request */
         printf("**** -> ICMP echo request received, sending echo reply.\n");
         /* Enviar echo reply */
         sr_send_icmp_error_packet(0, 0, sr, ipHdr->ip_src, packet);
@@ -160,7 +168,7 @@ void sr_handle_ip_packet(struct sr_instance *sr,
     printf("Packet is for me but not an ICMP request, ignoring\n");
     return;
   }
-
+  printf("****** -> 9999999999.\n");
   /* Verificar TTL */
   if (ipHdr->ip_ttl <= 1) {
     /* TTL expirado, enviar ICMP TTL exceeded */
@@ -168,21 +176,21 @@ void sr_handle_ip_packet(struct sr_instance *sr,
     sr_send_icmp_error_packet(11, 0, sr, ipHdr->ip_src, packet);
     return;
   }
-
-  /* Buscar en la tabla de enrutamiento si hay coincidencia */ //revisar
-  //struct sr_rt *rtEntry = sr_find_routing_entry(sr, ipHdr->ip_dst);
-  //if (!rtEntry) {
-  //    /* No hay coincidencia en la tabla de enrutamiento, enviar ICMP net unreachable */
-  //    printf("**** -> No matching route, sending ICMP net unreachable.\n");
-  //    sr_send_icmp_error_packet(3, 0, sr, ipHdr->ip_src, packet);
-  //    return;
-  //}
-
+  printf("****** -> 10.\n");
+  /* Buscar en la tabla de enrutamiento si hay coincidencia */ 
+  struct sr_rt *rtEntry = NULL; /*sr_find_routing_entry(sr, ipHdr->ip_dst); revisar
+  if (!rtEntry) { */
+      /* No hay coincidencia en la tabla de enrutamiento, enviar ICMP net unreachable */
+      /*printf("**** -> No matching route, sending ICMP net unreachable.\n");
+      sr_send_icmp_error_packet(3, 0, sr, ipHdr->ip_src, packet);
+      return;
+  }*/
+   printf("****** -> 11.\n");
   /* Reducir TTL y recalcular checksum */
   ipHdr->ip_ttl--;
   ipHdr->ip_sum = 0;
   ipHdr->ip_sum = ip_cksum(ipHdr, sizeof(sr_ip_hdr_t));
-
+  printf("****** -> 12.\n");
   /* Buscar la dirección MAC de la siguiente interfaz en la tabla ARP */
   struct sr_arpentry *arpEntry = sr_arpcache_lookup(&(sr->cache), rtEntry->gw.s_addr);
   if (arpEntry) {
@@ -198,8 +206,8 @@ void sr_handle_ip_packet(struct sr_instance *sr,
       /* Solicitar ARP si no hay coincidencia y poner el paquete en espera */
       printf("**** -> No ARP entry, sending ARP request and queueing packet.\n");
       struct sr_arpreq *arpReq = sr_arpcache_queuereq(&(sr->cache), rtEntry->gw.s_addr, packet, len, rtEntry->interface);
-      //revisar esto
-      //sr_handle_arpreq(sr, arpReq);
+      /*revisar esto
+      sr_handle_arpreq(sr, arpReq);*/
   }
 }
 
@@ -345,9 +353,12 @@ void sr_handlepacket(struct sr_instance* sr,
   uint16_t pktType = ntohs(eHdr->ether_type);
 
   if (is_packet_valid(packet, len)) {
+    printf("****** -> 111111111111111.\n");
     if (pktType == ethertype_arp) {
+      printf("****** -> 2222222222.\n");
       sr_handle_arp_packet(sr, packet, len, srcAddr, destAddr, interface, eHdr);
     } else if (pktType == ethertype_ip) {
+      printf("****** -> 3333333333333.\n");
       sr_handle_ip_packet(sr, packet, len, srcAddr, destAddr, interface, eHdr);
     }
   }

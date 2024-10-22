@@ -87,6 +87,7 @@ int is_packet_valid(uint8_t *packet /* lent */,
             printf("****** -> Packet length is correct.\n");
             if (icmp_cksum(icmpHdr, len - icmpOffset) == icmpHdr->icmp_sum) {
               printf("****** -> ICMP packet checksum is correct.\n");
+              printf("****** -> ICMP packet checksum is correct.\n");
               return 1;
             }
           }
