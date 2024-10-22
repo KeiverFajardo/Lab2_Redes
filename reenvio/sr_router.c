@@ -68,17 +68,20 @@ void sr_handle_ip_packet(struct sr_instance *sr,
         char *interface /* lent */,
         sr_ethernet_hdr_t *eHdr) {
 
-  /* 
-  * COLOQUE ASÍ SU CÓDIGO
-  * SUGERENCIAS: 
-  * - Obtener el cabezal IP y direcciones 
+  //* - COLOQUE ASÍ SU CÓDIGO 
+  
+  //* - Obtener el cabezal IP y direcciones 
+  sr_ip_hdr_t* ip_hdr = (sr_ip_hdr_t*)(packet + sizeof(sr_ethernet_hdr_t));
+
+
+  /*
   * - Verificar si el paquete es para una de mis interfaces o si hay una coincidencia en mi tabla de enrutamiento 
   * - Si no es para una de mis interfaces y no hay coincidencia en la tabla de enrutamiento, enviar ICMP net unreachable
   * - Sino, si es para mí, verificar si es un paquete ICMP echo request y responder con un echo reply 
   * - Sino, verificar TTL, ARP y reenviar si corresponde (puede necesitar una solicitud ARP y esperar la respuesta)
   * - No olvide imprimir los mensajes de depuración
   */
-
+  
 }
 
 /* 
