@@ -94,7 +94,7 @@ void sr_send_icmp_error_packet(uint8_t type,
   ipHdr->ip_src = ipHdr->ip_dst;  /* Dirección IP de origen (IP del router) */
   ipHdr->ip_dst = ipDst;  /* Dirección IP de destino */
   ipHdr->ip_sum = 0;  /* Inicializar el checksum */
-  ipHdr->ip_sum = cksum(ipHdr, sizeof(sr_ip_hdr_t));  /* Calcular el checksum IP */
+  ipHdr->ip_sum = ip_cksum(ipHdr, sizeof(sr_ip_hdr_t));  /* Calcular el checksum IP */
 
   /* -- Configuración del encabezado ICMP -- */
   icmpHdr->icmp_type = type;  /* Tipo ICMP (por ejemplo, 3 para "Destination Unreachable") */
@@ -107,7 +107,7 @@ void sr_send_icmp_error_packet(uint8_t type,
   memcpy(icmpHdr->data, origIpHdr, ICMP_DATA_SIZE);
 
   /* Calcular el checksum del paquete ICMP */
-  icmpHdr->icmp_sum = cksum(icmpHdr, sizeof(sr_icmp_t3_hdr_t));
+  icmpHdr->icmp_sum = icmp3_cksum(icmpHdr, sizeof(sr_icmp_t3_hdr_t));
 
   /* -- Enviar el paquete ICMP -- */
   sr_send_packet(sr, icmpPacket, icmpPacketLen, ethHdr->ether_dhost);
