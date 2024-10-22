@@ -57,16 +57,13 @@ void sr_send_icmp_error_packet(uint8_t type,
 {
 
   /* COLOQUE AQUÍ SU CÓDIGO*/
-
   /* Definir el tamaño del nuevo paquete ICMP (Ethernet + IP + ICMP) */
   int icmpPacketLen = sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t) + sizeof(sr_icmp_t3_hdr_t);
   uint8_t *icmpPacket = malloc(icmpPacketLen);
-
   if (!icmpPacket) {
     fprintf(stderr, "Error al asignar memoria para el paquete ICMP\n");
     return;
   }
-
   /* Obtener los encabezados Ethernet e IP del paquete original */
   sr_ethernet_hdr_t *origEthHdr = (sr_ethernet_hdr_t *) ipPacket;
   sr_ip_hdr_t *origIpHdr = (sr_ip_hdr_t *) (ipPacket + sizeof(sr_ethernet_hdr_t));
@@ -75,7 +72,7 @@ void sr_send_icmp_error_packet(uint8_t type,
   sr_ethernet_hdr_t *ethHdr = (sr_ethernet_hdr_t *) icmpPacket;
   sr_ip_hdr_t *ipHdr = (sr_ip_hdr_t *) (icmpPacket + sizeof(sr_ethernet_hdr_t));
   sr_icmp_t3_hdr_t *icmpHdr = (sr_icmp_t3_hdr_t *) (icmpPacket + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t));
-
+ 
   /* -- Configuración del encabezado Ethernet -- */
   /* Direcciones MAC: se invierten las de origen y destino del paquete original */
   memcpy(ethHdr->ether_dhost, origEthHdr->ether_shost, ETHER_ADDR_LEN);
@@ -89,9 +86,9 @@ void sr_send_icmp_error_packet(uint8_t type,
   ipHdr->ip_len = htons(sizeof(sr_ip_hdr_t) + sizeof(sr_icmp_t3_hdr_t));  /* Longitud total del paquete IP */
   ipHdr->ip_id = 0;  /* ID de fragmentación (0 si no se fragmenta) */
   ipHdr->ip_off = htons(IP_DF);  /* Bandera "Don't Fragment" */
-  ipHdr->ip_ttl = 64;  /* Time to Live */
+  ipHdr->ip_ttl = 129;  /* Time to Live */
   ipHdr->ip_p = ip_protocol_icmp;  /* Protocolo ICMP */
-  ipHdr->ip_src = ipHdr->ip_dst;  /* Dirección IP de origen (IP del router) */
+  ipHdr->ip_src = origIpHdr->ip_dst;  /* Dirección IP de origen (IP del router) */
   ipHdr->ip_dst = ipDst;  /* Dirección IP de destino */
   ipHdr->ip_sum = 0;  /* Inicializar el checksum */
   ipHdr->ip_sum = ip_cksum(ipHdr, sizeof(sr_ip_hdr_t));  /* Calcular el checksum IP */
@@ -110,11 +107,26 @@ void sr_send_icmp_error_packet(uint8_t type,
   icmpHdr->icmp_sum = icmp3_cksum(icmpHdr, sizeof(sr_icmp_t3_hdr_t));
 
   /* -- Enviar el paquete ICMP -- */
-  sr_send_packet(sr, icmpPacket, icmpPacketLen, ethHdr->ether_dhost);
+  sr_print_if_list(sr);
+  printf("Destination IP: %s\n", inet_ntoa(*(struct in_addr *)&origIpHdr->ip_dst));
+   printf("Src IP: %s\n", inet_ntoa(*(struct in_addr *)&origIpHdr->ip_src));
+  struct sr_if *myInterface = sr_get_interface_given_ip(sr, origIpHdr->ip_dst);
+ 
+  printf("*** -> Print Ethernet header.\n");
+  print_hdr_eth(ethHdr);
 
+  printf("*** -> Print IP header.\n");
+  print_hdr_ip(ipHdr);
+
+  printf("*** -> Print ICMP header.\n");
+  print_hdr_icmp(icmpHdr);
+
+  printf(sr->if_list->name);
+  sr_send_packet(sr, icmpPacket, icmpPacketLen, sr->if_list->name);
+  printf("****** -> 30.\n");
   /* Liberar memoria asignada */
   free(icmpPacket);
-
+  printf("****** -> 31.\n");
 } /* -- sr_send_icmp_error_packet -- */
 
 void sr_handle_ip_packet(struct sr_instance *sr,
@@ -135,27 +147,35 @@ void sr_handle_ip_packet(struct sr_instance *sr,
   * - Sino, verificar TTL, ARP y reenviar si corresponde (puede necesitar una solicitud ARP y esperar la respuesta)
   * - No olvide imprimir los mensajes de depuración
   */
-  printf("****** -> 4444444.\n");
+
+  printf("*** -> Print Ethernet header.\n");
+  print_hdr_eth(packet);
+
+  printf("*** -> Print IP header.\n");
+  print_hdr_ip(packet + sizeof(sr_ethernet_hdr_t));
+
+  printf("*** -> Print ICMP header.\n");
+  print_hdr_icmp(packet + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t) );
+
   /* Obtener el encabezado IP */
   sr_ip_hdr_t *ipHdr = (sr_ip_hdr_t *)(packet + sizeof(sr_ethernet_hdr_t));
-  printf("****** -> 55555555.\n");
   /* Verificar si el paquete es para una de mis interfaces */
   printf("Destination IP: %s\n", inet_ntoa(*(struct in_addr *)&ipHdr->ip_dst));
   sr_print_if_list(sr);
-  struct sr_if *myInterface = sr_get_interface_given_ip(sr, inet_ntoa(*(struct in_addr *)&ipHdr->ip_dst));
-  printf("****** -> 6666666666.\n");
+  printf("Interface: %s\n", interface);
+  struct sr_if *myInterface2 = sr_get_interface(sr, interface);
+  sr_print_if(myInterface2);
+  struct sr_if *myInterface = sr_get_interface_given_ip(sr, ipHdr->ip_dst);
 
-  sr_print_if(myInterface);
-  printf("****** -> 16.\n");
-  if (myInterface) {
+  sr_print_if(myInterface2);
+
+  if (myInterface2) {
     /* Si el paquete es para mí */
     printf("**** -> IP packet is for me.\n");
 
     /* Verificar si es un paquete ICMP echo request */
     if (ipHdr->ip_p == ip_protocol_icmp) {
-      printf("****** -> 777777777777.\n");
       sr_icmp_hdr_t *icmpHdr = (sr_icmp_hdr_t *)(packet + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t));
-      printf("****** -> 88888888.\n");
       if (icmpHdr->icmp_type == 8) {  /* ICMP echo request */
         printf("**** -> ICMP echo request received, sending echo reply.\n");
         /* Enviar echo reply */
@@ -353,12 +373,9 @@ void sr_handlepacket(struct sr_instance* sr,
   uint16_t pktType = ntohs(eHdr->ether_type);
 
   if (is_packet_valid(packet, len)) {
-    printf("****** -> 111111111111111.\n");
     if (pktType == ethertype_arp) {
-      printf("****** -> 2222222222.\n");
       sr_handle_arp_packet(sr, packet, len, srcAddr, destAddr, interface, eHdr);
     } else if (pktType == ethertype_ip) {
-      printf("****** -> 3333333333333.\n");
       sr_handle_ip_packet(sr, packet, len, srcAddr, destAddr, interface, eHdr);
     }
   }
