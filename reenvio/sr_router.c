@@ -109,12 +109,17 @@ void sr_send_icmp_error_packet(uint8_t type,
   /* Calcular el checksum del paquete ICMP */
   icmpHdr->icmp_sum = icmp3_cksum(icmpHdr, sizeof(sr_icmp_t3_hdr_t));
 
-  /* -- Enviar el paquete ICMP -- */
-  sr_send_packet(sr, icmpPacket, icmpPacketLen, ethHdr->ether_dhost);
+  struct sr_if *myInterface = sr_get_interface_given_ip(sr, ipDst);
+  
+  printf("<---->\n");
+  sr_print_if(myInterface);
 
+  /* -- Enviar el paquete ICMP -- */
+  sr_send_packet(sr, icmpPacket, icmpPacketLen, myInterface->name);
+
+  printf("LLEGO\n");
   /* Liberar memoria asignada */
   free(icmpPacket);
-
 } /* -- sr_send_icmp_error_packet -- */
 
 void sr_handle_ip_packet(struct sr_instance *sr,
@@ -135,27 +140,32 @@ void sr_handle_ip_packet(struct sr_instance *sr,
   * - Sino, verificar TTL, ARP y reenviar si corresponde (puede necesitar una solicitud ARP y esperar la respuesta)
   * - No olvide imprimir los mensajes de depuración
   */
-  printf("****** -> 4444444.\n");
+
   /* Obtener el encabezado IP */
   sr_ip_hdr_t *ipHdr = (sr_ip_hdr_t *)(packet + sizeof(sr_ethernet_hdr_t));
-  printf("****** -> 55555555.\n");
+  
   /* Verificar si el paquete es para una de mis interfaces */
+  printf("Origin IP: %s\n", inet_ntoa(*(struct in_addr *)&ipHdr->ip_src));
   printf("Destination IP: %s\n", inet_ntoa(*(struct in_addr *)&ipHdr->ip_dst));
-  sr_print_if_list(sr);
-  struct sr_if *myInterface = sr_get_interface_given_ip(sr, inet_ntoa(*(struct in_addr *)&ipHdr->ip_dst));
-  printf("****** -> 6666666666.\n");
 
+  struct sr_if *myInterface = sr_get_interface_given_ip(sr, ipHdr->ip_dst);
   sr_print_if(myInterface);
-  printf("****** -> 16.\n");
-  if (myInterface) {
+
+  if (&myInterface) {
     /* Si el paquete es para mí */
     printf("**** -> IP packet is for me.\n");
-
+    sr_print_if_list(sr);
+    sr_add_interface(sr,"prueba");
+    sr_ethernet_hdr_t *orig = (sr_ethernet_hdr_t *) packet;
+    sr_set_ether_addr(sr, destAddr);
+    sr_set_ether_ip(sr,ipHdr->ip_src);
+    sr_print_if_list(sr);
     /* Verificar si es un paquete ICMP echo request */
     if (ipHdr->ip_p == ip_protocol_icmp) {
       printf("****** -> 777777777777.\n");
       sr_icmp_hdr_t *icmpHdr = (sr_icmp_hdr_t *)(packet + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t));
       printf("****** -> 88888888.\n");
+      print_hdr_icmp(icmpHdr);
       if (icmpHdr->icmp_type == 8) {  /* ICMP echo request */
         printf("**** -> ICMP echo request received, sending echo reply.\n");
         /* Enviar echo reply */
