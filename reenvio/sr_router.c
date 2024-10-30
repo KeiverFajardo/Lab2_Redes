@@ -109,10 +109,11 @@ void sr_send_icmp_error_packet(uint8_t type,
   /* Calcular el checksum del paquete ICMP */
   icmpHdr->icmp_sum = icmp3_cksum(icmpHdr, sizeof(sr_icmp_t3_hdr_t));
 
+  printf("DEST IP: %s\n", inet_ntoa(*(struct in_addr *) ipDst));
   struct sr_if *myInterface = sr_get_interface_given_ip(sr, ipDst);
   
+
   printf("<---->\n");
-  printf("hola \n");
   sr_print_if(myInterface);
 
   /* -- Enviar el paquete ICMP -- */
