@@ -112,6 +112,7 @@ void sr_send_icmp_error_packet(uint8_t type,
   struct sr_if *myInterface = sr_get_interface_given_ip(sr, ipDst);
   
   printf("<---->\n");
+  printf("hola \n");
   sr_print_if(myInterface);
 
   /* -- Enviar el paquete ICMP -- */
@@ -148,6 +149,7 @@ void sr_handle_ip_packet(struct sr_instance *sr,
   printf("Destination IP: %s\n", inet_ntoa(*(struct in_addr *)&ipHdr->ip_dst));
 
   struct sr_if *myInterface = sr_get_interface_given_ip(sr, ipHdr->ip_dst);
+  
   sr_print_if(myInterface);
 
   if (&myInterface) {
