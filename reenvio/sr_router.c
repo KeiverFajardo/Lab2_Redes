@@ -88,7 +88,7 @@ void sr_send_icmp_error_packet(uint8_t type,
   ipHdr->ip_tos = 0;  /* Tipo de servicio */
   ipHdr->ip_len = htons(sizeof(sr_ip_hdr_t) + sizeof(sr_icmp_t3_hdr_t));  /* Longitud total del paquete IP */
   ipHdr->ip_id = 0;  /* ID de fragmentación (0 si no se fragmenta) */
-  ipHdr->ip_off = htons(IP_DF);  /* Bandera "Don't Fragment" */
+  ipHdr->ip_off = 0;  /* Bandera "Don't Fragment" */
   ipHdr->ip_ttl = 64;  /* Time to Live */
   ipHdr->ip_p = ip_protocol_icmp;  /* Protocolo ICMP */
   ipHdr->ip_src = origIpHdr->ip_dst;  /* Dirección IP de origen (IP del router) */
@@ -156,12 +156,6 @@ void sr_handle_ip_packet(struct sr_instance *sr,
   if (&myInterface) {
     /* Si el paquete es para mí */
     printf("**** -> IP packet is for me.\n");
-    /*sr_print_if_list(sr);
-    sr_add_interface(sr,"prueba");
-    sr_set_ether_addr(sr, srcAddr);
-    sr_set_ether_ip(sr,ipHdr->ip_src);
-    sr_print_if_list(sr);*/
-    /* Verificar si es un paquete ICMP echo request */
     if (ipHdr->ip_p == ip_protocol_icmp) {
       printf("****** -> 777777777777.\n");
       sr_icmp_hdr_t *icmpHdr = (sr_icmp_hdr_t *)(packet + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t));
