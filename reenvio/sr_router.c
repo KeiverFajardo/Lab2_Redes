@@ -289,7 +289,7 @@ void sr_handle_ip_packet(struct sr_instance *sr,
 
         /*esperar respuesta arp y al recibir respuesta arp respònder y send a todos los que estaban esperando*/
 
-        r_send_packet(sr, packet, len, nameInterface);
+        sr_send_packet(sr, packet, len, nameInterface);
         printf("despues del handle\n");
     }
   }
