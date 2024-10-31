@@ -105,6 +105,7 @@ void sr_send_icmp_error_packet(uint8_t type,
     fprintf(stderr, "Error al asignar memoria para el paquete ICMP\n");
     return;
   }
+  
   /* Obtener los encabezados Ethernet e IP del paquete original */
   sr_ethernet_hdr_t *origEthHdr = (sr_ethernet_hdr_t *) ipPacket;
   sr_ip_hdr_t *origIpHdr = (sr_ip_hdr_t *) (ipPacket + sizeof(sr_ethernet_hdr_t));
@@ -114,6 +115,11 @@ void sr_send_icmp_error_packet(uint8_t type,
   sr_ip_hdr_t *ipHdr = (sr_ip_hdr_t *) (icmpPacket + sizeof(sr_ethernet_hdr_t));
   /*depende del tipo de mensaje*/
   sr_icmp_t3_hdr_t *icmpHdr = (sr_icmp_t3_hdr_t *) (icmpPacket + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t));
+
+  /* Destination net unreachable (type 3, code 0) */
+  /* Destination host unreachable (type 3, code 1) */
+  /* Port unreachable (type 3, code 3) */
+  /* Time exceeded (type 11, code 0) */
   
   /* -- Configuración del encabezado ICMP -- */
   icmpHdr->icmp_type = type;  /* Tipo ICMP (por ejemplo, 3 para "Destination Unreachable") */
@@ -127,23 +133,7 @@ void sr_send_icmp_error_packet(uint8_t type,
 
   /* Calcular el checksum del paquete ICMP */
   icmpHdr->icmp_sum = icmp3_cksum(icmpHdr, sizeof(sr_icmp_t3_hdr_t));
-
-  /* Destination net unreachable (type 3, code 0) */
-  if(type == 3 && code == 0)
-  {
-
-  }
-
-
-  /* COLOQUE AQUÍ SU CÓDIGO*/
-
-
-  /* -- Configuración del encabezado Ethernet -- */
-  /* Direcciones MAC: se invierten las de origen y destino del paquete original */
-  memcpy(ethHdr->ether_dhost, origEthHdr->ether_shost, ETHER_ADDR_LEN);
-  memcpy(ethHdr->ether_shost, origEthHdr->ether_dhost, ETHER_ADDR_LEN);
-  ethHdr->ether_type = htons(ethertype_ip);  /* Tipo de protocolo IP */
-
+  
   /* -- Configuración del encabezado IP -- */
   ipHdr->ip_v = 4;  /* Versión IP (IPv4) */
   ipHdr->ip_hl = sizeof(sr_ip_hdr_t) / 4;  /* Longitud del encabezado IP */
@@ -153,19 +143,26 @@ void sr_send_icmp_error_packet(uint8_t type,
   ipHdr->ip_off = 0;  /* Bandera "Don't Fragment" */
   ipHdr->ip_ttl = 64;  /* Time to Live */
   ipHdr->ip_p = ip_protocol_icmp;  /* Protocolo ICMP */
-  ipHdr->ip_src = ipDst;  /* Dirección IP de origen (IP del router) */
-  ipHdr->ip_dst = origIpHdr->ip_src;  /* Dirección IP de destino */
+  ipHdr->ip_src = origIpHdr->ip_dst;  /* Dirección IP de origen (IP del router) OJOOOOOOOOOO */
+  ipHdr->ip_dst = ipDst;  /* Dirección IP de destino */
   ipHdr->ip_sum = 0;  /* Inicializar el checksum */
   ipHdr->ip_sum = ip_cksum(ipHdr, sizeof(sr_ip_hdr_t));  /* Calcular el checksum IP */
 
-  struct sr_if *myInterface = sr_get_interface_given_ip(sr, ipDst);
-  
+  /* -- Configuración del encabezado Ethernet -- */
+  memcpy(ethHdr->ether_dhost, origEthHdr->ether_shost, ETHER_ADDR_LEN);
+  memcpy(ethHdr->ether_shost, origEthHdr->ether_dhost, ETHER_ADDR_LEN);
+  ethHdr->ether_type = htons(ethertype_ip);  /* Tipo de protocolo IP */
 
-  printf("<---->\n");
-  sr_print_if(myInterface);
+  /* COLOQUE AQUÍ SU CÓDIGO*/
+
+  /* Imprimir cabezales */ 
+  printf("$$$ -> Imprimir cabezales antes de enviar el paquete ICMP error.\n");
+  
+  print_hdrs(icmpPacket, icmpPacketLen);
 
   /* -- Enviar el paquete ICMP -- */
-  sr_send_packet(sr, icmpPacket, icmpPacketLen, myInterface->name);
+   char* nameInterface = longest_prefix_match(sr, ipDst);
+  sr_send_packet(sr, icmpPacket, icmpPacketLen, nameInterface);
 
   /* Liberar memoria asignada */
   free(icmpPacket);
@@ -190,6 +187,7 @@ void sr_handle_ip_packet(struct sr_instance *sr,
   */
 
   /* Imprimir cabezales */ 
+  printf("$$$ -> Imprimir cabezales ip packet recibido.\n");
   print_hdrs(packet, len);
 
   sr_ip_hdr_t *ipHdr = (sr_ip_hdr_t *)(packet + sizeof(sr_ethernet_hdr_t));
@@ -204,9 +202,6 @@ void sr_handle_ip_packet(struct sr_instance *sr,
   }
 
   /* Verificar si el paquete es para una de mis interfaces */
-  printf("Origin IP: %s\n", inet_ntoa(*(struct in_addr *)&ipHdr->ip_src));
-  printf("Destination IP: %s\n", inet_ntoa(*(struct in_addr *)&ipHdr->ip_dst));
-
   struct sr_if *myInterface = sr_get_interface_given_ip(sr, ipHdr->ip_dst);
   
   if (myInterface) {
@@ -241,6 +236,9 @@ void sr_handle_ip_packet(struct sr_instance *sr,
         printf("$$$ -> Sent echo reply complete.\n");
         return;
       }
+    } else {
+      printf("**** -> CARGA TCP o UDP, sending ICMP Port unreachable.\n");
+      sr_send_icmp_error_packet(3, 3, sr, ipHdr->ip_src, packet);
     }
 
     /* Si no es ICMP, ignorar el paquete o manejar otros tipos */
@@ -280,12 +278,13 @@ void sr_handle_ip_packet(struct sr_instance *sr,
           printf("**** -> Forwarding IP packet.\n");
 
           memcpy(eHdr->ether_dhost, arpEntry->mac, ETHER_ADDR_LEN);
-          memcpy(eHdr->ether_shost, destAddr, ETHER_ADDR_LEN);
+          memcpy(eHdr->ether_shost, myInterface->addr, ETHER_ADDR_LEN);
+
           sr_send_packet(sr, packet, len, nameInterface);
 
           /*  You must free the returned structure if it is not NULL */
           free(arpEntry);
-          printf("$$$ -> Send sr_send_packet complete luego de conseguir la mac directamente.\n");
+          printf("$$$ -> Sent sr_send_packet complete luego de conseguir la mac directamente.\n");
           return;
       } else {
           /* Solicitar ARP si no hay coincidencia y poner el paquete en espera */
@@ -294,18 +293,18 @@ void sr_handle_ip_packet(struct sr_instance *sr,
           handle_arpreq(sr, arpReq);
 
           /*esperar respuesta arp y al recibir respuesta arp responder y send a todos los que estaban esperando*/
-          struct sr_arpentry *arpEntryWait = sr_arpcache_lookup(&(sr->cache), ipHdr->ip_dst);
-          while (arpEntryWait != NULL){
+          /*struct sr_arpentry *arpEntryWait = sr_arpcache_lookup(&(sr->cache), ipHdr->ip_dst);
+          while (arpEntryWait == NULL){
             struct sr_arpentry *arpEntryWait = sr_arpcache_lookup(&(sr->cache), ipHdr->ip_dst);
           }
 
           memcpy(eHdr->ether_dhost, arpEntryWait->mac, ETHER_ADDR_LEN);
-          memcpy(eHdr->ether_shost, destAddr, ETHER_ADDR_LEN);
+          memcpy(eHdr->ether_shost, destAddr, ETHER_ADDR_LEN);*/
           sr_send_packet(sr, packet, len, nameInterface);
 
            /*  You must free the returned structure if it is not NULL */
-          free(arpEntryWait);
-          printf("$$$ -> Send sr_send_packet complete luego de conseguir la mac de la cola de espera.\n");
+          /*free(arpEntryWait);*/
+          printf("$$$ -> Sent sr_send_packet complete luego de conseguir la mac de la cola de espera.\n");
           return;
       }
     }
