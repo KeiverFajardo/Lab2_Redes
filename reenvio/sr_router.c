@@ -296,13 +296,6 @@ void sr_handle_ip_packet(struct sr_instance *sr,
 
         /*esperar respuesta arp y al recibir respuesta arp respònder y send a todos los que estaban esperando*/
 
-        arpReq = sr_arpcache_insert(&(sr->cache), destAddr, ipHdr->ip_dst);
-        /* La función me devuelve la lista de paquetes pendientes que esperaban por ese reply*/
-
-        if (arpReq){
-          /*send all packets on the req->packets linked list*/
-          sr_arpreq_destroy(&(sr->cache), arpReq);
-        }
 
         sr_send_packet(sr, packet, len, nameInterface);
         printf("despues del handle\n");
