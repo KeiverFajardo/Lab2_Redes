@@ -21,6 +21,9 @@
 #include "sr_arpcache.h"
 #include "sr_utils.h"
 
+#include <stdint.h>
+#include <arpa/inet.h>
+
 /*---------------------------------------------------------------------
  * Method: sr_init(void)
  * Scope:  Global
@@ -47,6 +50,46 @@ void sr_init(struct sr_instance* sr)
     pthread_create(&thread, &(sr->attr), sr_arpcache_timeout, sr);
 
 } /* -- sr_init -- */
+
+
+// Función que encuentra el nombre de la interfaz con la coincidencia de prefijo más larga
+char* longest_prefix_match(struct sr_instance* sr, uint32_t ip_dst) {
+    struct sr_rt* rt_entry = sr->routing_table;
+    struct sr_rt* best_match = NULL;
+    uint32_t longest_match_len = 0;
+
+    while (rt_entry != NULL) {
+        // Aplicar la máscara de red a la dirección de destino y a la dirección de red de la entrada
+        uint32_t masked_dst = ip_dst & rt_entry->mask.s_addr;
+        uint32_t masked_entry = rt_entry->dest.s_addr & rt_entry->mask.s_addr;
+
+        // Verificar si hay coincidencia
+        if (masked_dst == masked_entry) {
+            // Contar la longitud del prefijo (bits de coincidencia) de la máscara
+            uint32_t mask = ntohl(rt_entry->mask.s_addr);
+            uint32_t match_len = 0;
+
+            while (mask) {
+                match_len += (mask & 1);
+                mask >>= 1;
+            }
+
+            // Actualizar la mejor coincidencia si esta es más larga
+            if (match_len > longest_match_len) {
+                longest_match_len = match_len;
+                best_match = rt_entry;
+            }
+        }
+
+        // Avanzar a la siguiente entrada de la tabla de enrutamiento
+        rt_entry = rt_entry->next;
+    }
+
+    // Si se encontró la mejor coincidencia, devuelve el nombre de la interfaz asociada
+    return best_match ? best_match->interface : NULL;
+}
+
+
 
 /* Envía un paquete ICMP de error */
 void sr_send_icmp_error_packet(uint8_t type,
@@ -153,7 +196,7 @@ void sr_handle_ip_packet(struct sr_instance *sr,
   
   sr_print_if(myInterface);
 
-  if (&myInterface) {
+  if (myInterface) {
     /* Si el paquete es para mí */
     printf("**** -> IP packet is for me.\n");
     if (ipHdr->ip_p == ip_protocol_icmp) {
@@ -163,8 +206,27 @@ void sr_handle_ip_packet(struct sr_instance *sr,
       print_hdr_icmp(icmpHdr);
       if (icmpHdr->icmp_type == 8) {  /* ICMP echo request */
         printf("**** -> ICMP echo request received, sending echo reply.\n");
-        /* Enviar echo reply */
-        sr_send_icmp_error_packet(0, 0, sr, ipHdr->ip_src, packet);
+
+        /* Cambiar el tipo a Echo Reply (0) y recalcular el checksum ICMP */
+        icmpHdr->icmp_type = 0; // Echo Reply
+        icmpHdr->icmp_code = 0;
+        icmpHdr->icmp_sum = 0; // Resetear el checksum
+        icmpHdr->icmp_sum = cksum(icmpHdr, len - sizeof(sr_ethernet_hdr_t) - sizeof(sr_ip_hdr_t)); // Recalcular checksum ICMP
+
+        /* Intercambiar las direcciones IP de origen y destino en el encabezado IP */
+        uint32_t temp_ip = ipHdr->ip_src;
+        ipHdr->ip_src = ipHdr->ip_dst;
+        ipHdr->ip_dst = temp_ip;
+        ipHdr->ip_sum = 0; // Resetear el checksum IP
+        ipHdr->ip_sum = cksum(ipHdr, sizeof(sr_ip_hdr_t)); // Recalcular checksum IP
+
+        /* Intercambiar las direcciones MAC de origen y destino en el encabezado Ethernet */
+        memcpy(eHdr->ether_dhost, eHdr->ether_shost, ETHER_ADDR_LEN);
+        memcpy(eHdr->ether_shost, myInterface->addr, ETHER_ADDR_LEN);
+
+        /* Enviar el paquete modificado como Echo Reply */
+        sr_send_packet(sr, packet, len, longest_prefix_match(sr,ipHdr->ip_dst));
+
         return;
       }
     }
