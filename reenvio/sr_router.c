@@ -198,7 +198,15 @@ void sr_handle_ip_packet(struct sr_instance *sr,
   */
 
   sr_ip_hdr_t *ipHdr = (sr_ip_hdr_t *)(packet + sizeof(sr_ethernet_hdr_t));
-  
+
+  uint16_t sum = ipHdr->ip_sum;
+  ipHdr->ip_sum = 0;
+  uint16_t new_sum = ip_cksum(ipHdr, sizeof(sr_ip_hdr_t));
+  ipHdr->ip_sum = sum;
+  if(new_sum != sum){
+    printf("checksumIp invalid");
+  }
+
   /* Verificar si el paquete es para una de mis interfaces */
   printf("Origin IP: %s\n", inet_ntoa(*(struct in_addr *)&ipHdr->ip_src));
   printf("Destination IP: %s\n", inet_ntoa(*(struct in_addr *)&ipHdr->ip_dst));
@@ -244,6 +252,14 @@ void sr_handle_ip_packet(struct sr_instance *sr,
   }
   else{
     printf("entra el else\n");
+    /* Verificar TTL */
+    if (ipHdr->ip_ttl <= 1) {
+      /* TTL expirado, enviar ICMP TTL exceeded */
+      printf("**** -> TTL expired, sending ICMP TTL exceeded.\n");
+      sr_send_icmp_error_packet(11, 0, sr, ipHdr->ip_src, packet);
+      return;
+    }
+
     /* coincidencia en mi tabla de enrutamiento  */
     /* Buscar en la tabla de enrutamiento si hay coincidencia */ 
     char* nameInterface = longest_prefix_match(sr, ipHdr->ip_dst);
@@ -252,20 +268,11 @@ void sr_handle_ip_packet(struct sr_instance *sr,
       sr_send_icmp_error_packet(3, 0, sr, ipHdr->ip_src, packet);
       return;
     }
-    printf("223\n");
-    /* Verificar TTL */
-    if (ipHdr->ip_ttl <= 1) {
-      /* TTL expirado, enviar ICMP TTL exceeded */
-      printf("**** -> TTL expired, sending ICMP TTL exceeded.\n");
-      sr_send_icmp_error_packet(11, 0, sr, ipHdr->ip_src, packet);
-      return;
-    }
-    printf("224\n");
+
     /* Reducir TTL y recalcular checksum */
     ipHdr->ip_ttl--;
     ipHdr->ip_sum = 0;
     ipHdr->ip_sum = ip_cksum(ipHdr, sizeof(sr_ip_hdr_t));
-    printf("225\n");
 
     /* Buscar la dirección MAC de la siguiente interfaz en la tabla ARP */
     struct sr_arpentry *arpEntry = sr_arpcache_lookup(&(sr->cache), ipHdr->ip_dst);
@@ -288,6 +295,14 @@ void sr_handle_ip_packet(struct sr_instance *sr,
         handle_arpreq(sr, arpReq);
 
         /*esperar respuesta arp y al recibir respuesta arp respònder y send a todos los que estaban esperando*/
+
+        arpReq = sr_arpcache_insert(&(sr->cache), destAddr, ipHdr->ip_dst);
+        /* La función me devuelve la lista de paquetes pendientes que esperaban por ese reply*/
+
+        if (arpReq){
+          /*send all packets on the req->packets linked list*/
+          sr_arpreq_destroy(arpReq)
+        }
 
         sr_send_packet(sr, packet, len, nameInterface);
         printf("despues del handle\n");
