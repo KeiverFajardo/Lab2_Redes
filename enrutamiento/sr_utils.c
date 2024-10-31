@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <string.h>
 #include "sr_protocol.h"
+#include "pwospf_protocol.h"
 #include "sr_utils.h"
 
 
@@ -52,6 +53,17 @@ uint32_t icmp3_cksum(sr_icmp_t3_hdr_t *icmp3Hdr, int len) {
     return calcChksum;
 }
 
+uint32_t ospfv2_cksum (ospfv2_hdr_t *ospfv2Hdr, int len) {
+    uint16_t currChksum, calcChksum;
+
+    currChksum = ospfv2Hdr->csum; 
+    ospfv2Hdr->csum = 0;
+    calcChksum = cksum(ospfv2Hdr, len);
+    ospfv2Hdr->csum = currChksum;    
+
+    return calcChksum;
+}
+
 int is_packet_valid(uint8_t *packet /* lent */,
     unsigned int len) {
 
@@ -64,10 +76,9 @@ int is_packet_valid(uint8_t *packet /* lent */,
     printf("**** -> Validate ARP packet.\n");
     cumulative_sz += sizeof(sr_arp_hdr_t);
     if (len >= cumulative_sz) {
-       printf("***** -> Packet length is correct.\n");
-       return 1;
+      printf("***** -> Packet length is correct.\n");
+      return 1;
     }
-
   } else if (eHdr->ether_type == htons(ethertype_ip)) {
     printf("**** -> Validate IP packet.\n");
     sr_ip_hdr_t *ipHdr = (sr_ip_hdr_t *) (packet + cumulative_sz);
@@ -90,6 +101,19 @@ int is_packet_valid(uint8_t *packet /* lent */,
               return 1;
             }
           }
+        } else if (ipHdr->ip_p == ip_protocol_ospfv2) {
+          printf("***** -> IP packet is OSPF packet. Validate OSPF packet.\n");
+          int ospfOffset = cumulative_sz;
+          ospfv2_hdr_t *ospfHdr = (ospfv2_hdr_t *) (packet + cumulative_sz);
+          cumulative_sz += sizeof(ospfv2_hdr_t);
+
+          if (len >= cumulative_sz) {
+            printf("****** -> Packet length is correct.\n");
+            if (ospfv2_cksum(ospfHdr, len - ospfOffset) == ospfHdr->csum) {
+              printf("****** -> OSPF packet checksum is correct.\n");
+              return 1;
+            }
+          }
         } else {
           /* TODO */
           printf("***** -> IP packet is of unknown protocol. No further validation is required.\n");
@@ -98,7 +122,6 @@ int is_packet_valid(uint8_t *packet /* lent */,
       }
     }
   }
-
   printf("*** -> Packet validation complete. Packet is INVALID.\n");
   return 0;
 }
@@ -234,6 +257,22 @@ void print_hdr_arp(uint8_t *buf) {
   print_addr_ip_int(ntohl(arp_hdr->ar_tip));
 }
 
+/*Prints out fields in PWOSPF header */
+void print_hdr_ospf(uint8_t* buf) {
+  ospfv2_hdr_t *ospf_hdr = (ospfv2_hdr_t *)(buf);
+  fprintf(stderr, "PWOSPF header\n");
+  fprintf(stderr, "\tversion: %d\n", ospf_hdr->version);
+  fprintf(stderr, "\ttype: %d\n", ospf_hdr->type);
+  fprintf(stderr, "\tlength: %d\n", ntohs(ospf_hdr->len));
+  fprintf(stderr, "\trouter id: ");
+  print_addr_ip_int(ntohl(ospf_hdr->rid));
+  fprintf(stderr, "\tarea id: ");
+  print_addr_ip_int(ntohl(ospf_hdr->aid));
+  fprintf(stderr, "\tchecksum: %d\n", ospf_hdr->csum);
+  fprintf(stderr, "\tauthentication type: %d\n", ospf_hdr->autype);
+  fprintf(stderr, "\tauthentication data: %d\n", ospf_hdr->audata);
+}
+
 /* Prints out all possible headers, starting from Ethernet */
 void print_hdrs(uint8_t *buf, uint32_t length) {
 
@@ -276,3 +315,4 @@ void print_hdrs(uint8_t *buf, uint32_t length) {
     fprintf(stderr, "Unrecognized Ethernet Type: %d\n", ethtype);
   }
 }
+
