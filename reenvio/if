@@ -171,7 +171,7 @@ int sr_connect_to_server(struct sr_instance* sr,unsigned short port,
  *
  * Read, from the server, the hardware information for the reserved host.
  *
- *----------------------------------------------------------------------------*/
+ *---------------------------------------------------------------------------*/
 
 int sr_handle_hwinfo(struct sr_instance* sr, c_hwinfo* hwinfo)
 {
@@ -530,6 +530,9 @@ sr_ether_addrs_match_interface( struct sr_instance* sr, /* borrowed */
     ether_hdr = (struct sr_ethernet_hdr*)buf;
     iface = sr_get_interface(sr, name);
 
+    printf("iface: \n");
+    sr_print_if(iface);
+    print("----");
     if ( iface == 0 ){
         fprintf( stderr, "** Error, interface %s, does not exist\n", name);
         return 0;

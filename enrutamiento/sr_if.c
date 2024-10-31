@@ -71,15 +71,13 @@ struct sr_if* sr_get_interface_given_ip(struct sr_instance* sr, uint32_t ip)
     assert(ip);
     assert(sr);
 
-    if_walker = sr->if_list;    
+    if_walker = sr->if_list;
 
     while(if_walker)
     {
        if(if_walker->ip == ip)
-        { 
-	return if_walker; 
-	}
-       if_walker = if_walker->next;
+        { return if_walker; }
+        if_walker = if_walker->next;
     }
 
     return 0;
@@ -107,6 +105,9 @@ void sr_add_interface(struct sr_instance* sr, const char* name)
         sr->if_list = (struct sr_if*)malloc(sizeof(struct sr_if));
         assert(sr->if_list);
         sr->if_list->next = 0;
+        sr->if_list->neighbor_id = 0;
+        sr->if_list->neighbor_ip = 0;
+        sr->if_list->helloint = 0;
         strncpy(sr->if_list->name,name,sr_IFACE_NAMELEN);
         return;
     }
@@ -119,8 +120,11 @@ void sr_add_interface(struct sr_instance* sr, const char* name)
     if_walker->next = (struct sr_if*)malloc(sizeof(struct sr_if));
     assert(if_walker->next);
     if_walker = if_walker->next;
+    if_walker->neighbor_id = 0;
+    if_walker->neighbor_ip = 0;
     strncpy(if_walker->name,name,sr_IFACE_NAMELEN);
     if_walker->next = 0;
+    if_walker->helloint = 0;
 } /* -- sr_add_interface -- */ 
 
 /*--------------------------------------------------------------------- 
@@ -170,6 +174,30 @@ void sr_set_ether_ip(struct sr_instance* sr, uint32_t ip_nbo)
     if_walker->ip = ip_nbo;
 
 } /* -- sr_set_ether_ip -- */
+
+/*--------------------------------------------------------------------- 
+ * Method: sr_set_ether_mask(..)
+ * Scope: Global
+ *
+ * set the mask of the interface
+ *
+ *---------------------------------------------------------------------*/
+
+void sr_set_ether_mask(struct sr_instance* sr, uint32_t mask_nbo)
+{
+    struct sr_if* if_walker = 0;
+
+    /* -- REQUIRES -- */
+    assert(sr->if_list);
+    
+    if_walker = sr->if_list;
+    while(if_walker->next)
+    {if_walker = if_walker->next; }
+
+    /* -- copy address -- */
+    if_walker->mask = mask_nbo;
+
+} /* -- sr_set_ether_mask -- */
 
 /*--------------------------------------------------------------------- 
  * Method: sr_print_if_list(..)

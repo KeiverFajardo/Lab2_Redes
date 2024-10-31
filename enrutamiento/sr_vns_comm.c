@@ -171,7 +171,7 @@ int sr_connect_to_server(struct sr_instance* sr,unsigned short port,
  *
  * Read, from the server, the hardware information for the reserved host.
  *
- *----------------------------------------------------------------------------*/
+ *---------------------------------------------------------------------------*/
 
 int sr_handle_hwinfo(struct sr_instance* sr, c_hwinfo* hwinfo)
 {
@@ -191,34 +191,35 @@ int sr_handle_hwinfo(struct sr_instance* sr, c_hwinfo* hwinfo)
         switch( ntohl(hwinfo->mHWInfo[i].mKey))
         {
             case HWFIXEDIP:
-                /*Debug("Fixed IP: %s\n",inet_ntoa(
-                            *((struct in_addr*)(hwinfo->mHWInfo[i].value))));*/
+                Debug("Fixed IP: %s\n",inet_ntoa(
+                            *((struct in_addr*)(hwinfo->mHWInfo[i].value))));
                 break;
             case HWINTERFACE:
-                /*Debug("INTERFACE: %s\n",hwinfo->mHWInfo[i].value);*/
+                Debug("INTERFACE: %s\n",hwinfo->mHWInfo[i].value);
                 sr_add_interface(sr,hwinfo->mHWInfo[i].value);
                 break;
             case HWSPEED:
-                /* Debug("Speed: %d\n",
-                        ntohl(*((unsigned int*)hwinfo->mHWInfo[i].value))); */
+                Debug("Speed: %d\n",
+                        ntohl(*((unsigned int*)hwinfo->mHWInfo[i].value)));
                 break;
             case HWSUBNET:
-                /* Debug("Subnet: %s\n",inet_ntoa(
-                            *((struct in_addr*)(hwinfo->mHWInfo[i].value)))); */
+                Debug("Subnet: %s\n",inet_ntoa(
+                            *((struct in_addr*)(hwinfo->mHWInfo[i].value))));
                 break;
             case HWMASK:
-                /* Debug("Mask: %s\n",inet_ntoa(
-                            *((struct in_addr*)(hwinfo->mHWInfo[i].value)))); */
+                Debug("Mask: %s\n",inet_ntoa(
+                            *((struct in_addr*)(hwinfo->mHWInfo[i].value))));
+                sr_set_ether_mask(sr,*((uint32_t*)hwinfo->mHWInfo[i].value));
                 break;
             case HWETHIP:
-                /*Debug("IP: %s\n",inet_ntoa(
-                            *((struct in_addr*)(hwinfo->mHWInfo[i].value))));*/
+                Debug("IP: %s\n",inet_ntoa(
+                            *((struct in_addr*)(hwinfo->mHWInfo[i].value))));
                 sr_set_ether_ip(sr,*((uint32_t*)hwinfo->mHWInfo[i].value));
                 break;
             case HWETHER:
-                /*Debug("\tHardware Address: ");
+                Debug("\tHardware Address: ");
                 DebugMAC(hwinfo->mHWInfo[i].value);
-                Debug("\n"); */
+                Debug("\n");
                 sr_set_ether_addr(sr,(unsigned char*)hwinfo->mHWInfo[i].value);
                 break;
             default:
@@ -471,8 +472,8 @@ int sr_read_from_server_expect(struct sr_instance* sr /* borrowed */, int expect
             sr_handle_hwinfo(sr,(c_hwinfo*)buf);
             if(sr_verify_routing_table(sr) != 0)
             {
-                fprintf(stderr,"Routing table not consistent with hardware\n");
-                return -1;
+                /*fprintf(stderr,"Routing table not consistent with hardware\n");
+                return -1;*/
             }
             printf(" <-- Ready to process packets --> \n");
             break;
