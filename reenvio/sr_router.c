@@ -98,11 +98,6 @@ void sr_send_icmp_error_packet(uint8_t type,
                               uint32_t ipDst,
                               uint8_t *ipPacket)
 {
-<<<<<<< HEAD
-
-  /* COLOQUE AQUÍ SU CÓDIGO*/
-=======
->>>>>>> juani
   /* Definir el tamaño del nuevo paquete ICMP (Ethernet + IP + ICMP) */
   int icmpPacketLen = sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t) + sizeof(sr_icmp_t3_hdr_t);
   uint8_t *icmpPacket = malloc(icmpPacketLen);
@@ -119,31 +114,7 @@ void sr_send_icmp_error_packet(uint8_t type,
   sr_ip_hdr_t *ipHdr = (sr_ip_hdr_t *) (icmpPacket + sizeof(sr_ethernet_hdr_t));
   /*depende del tipo de mensaje*/
   sr_icmp_t3_hdr_t *icmpHdr = (sr_icmp_t3_hdr_t *) (icmpPacket + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t));
-<<<<<<< HEAD
- 
-  /* -- Configuración del encabezado Ethernet -- */
-  /* Direcciones MAC: se invierten las de origen y destino del paquete original */
-  memcpy(ethHdr->ether_dhost, origEthHdr->ether_shost, ETHER_ADDR_LEN);
-  memcpy(ethHdr->ether_shost, origEthHdr->ether_dhost, ETHER_ADDR_LEN);
-  ethHdr->ether_type = htons(ethertype_ip);  /* Tipo de protocolo IP */
-
-  /* -- Configuración del encabezado IP -- */
-  ipHdr->ip_v = 4;  /* Versión IP (IPv4) */
-  ipHdr->ip_hl = sizeof(sr_ip_hdr_t) / 4;  /* Longitud del encabezado IP */
-  ipHdr->ip_tos = 0;  /* Tipo de servicio */
-  ipHdr->ip_len = htons(sizeof(sr_ip_hdr_t) + sizeof(sr_icmp_t3_hdr_t));  /* Longitud total del paquete IP */
-  ipHdr->ip_id = 0;  /* ID de fragmentación (0 si no se fragmenta) */
-  ipHdr->ip_off = htons(IP_DF);  /* Bandera "Don't Fragment" */
-  ipHdr->ip_ttl = 129;  /* Time to Live */
-  ipHdr->ip_p = ip_protocol_icmp;  /* Protocolo ICMP */
-  ipHdr->ip_src = origIpHdr->ip_dst;  /* Dirección IP de origen (IP del router) */
-  ipHdr->ip_dst = ipDst;  /* Dirección IP de destino */
-  ipHdr->ip_sum = 0;  /* Inicializar el checksum */
-  ipHdr->ip_sum = ip_cksum(ipHdr, sizeof(sr_ip_hdr_t));  /* Calcular el checksum IP */
-
-=======
   
->>>>>>> juani
   /* -- Configuración del encabezado ICMP -- */
   icmpHdr->icmp_type = type;  /* Tipo ICMP (por ejemplo, 3 para "Destination Unreachable") */
   icmpHdr->icmp_code = code;  /* Código ICMP (por ejemplo, 1 para "Host Unreachable") */
@@ -157,29 +128,6 @@ void sr_send_icmp_error_packet(uint8_t type,
   /* Calcular el checksum del paquete ICMP */
   icmpHdr->icmp_sum = icmp3_cksum(icmpHdr, sizeof(sr_icmp_t3_hdr_t));
 
-<<<<<<< HEAD
-  /* -- Enviar el paquete ICMP -- */
-  sr_print_if_list(sr);
-  printf("Destination IP: %s\n", inet_ntoa(*(struct in_addr *)&origIpHdr->ip_dst));
-   printf("Src IP: %s\n", inet_ntoa(*(struct in_addr *)&origIpHdr->ip_src));
-  struct sr_if *myInterface = sr_get_interface_given_ip(sr, origIpHdr->ip_dst);
- 
-  printf("*** -> Print Ethernet header.\n");
-  print_hdr_eth(ethHdr);
-
-  printf("*** -> Print IP header.\n");
-  print_hdr_ip(ipHdr);
-
-  printf("*** -> Print ICMP header.\n");
-  print_hdr_icmp(icmpHdr);
-
-  printf(sr->if_list->name);
-  sr_send_packet(sr, icmpPacket, icmpPacketLen, sr->if_list->name);
-  printf("****** -> 30.\n");
-  /* Liberar memoria asignada */
-  free(icmpPacket);
-  printf("****** -> 31.\n");
-=======
   /* Destination net unreachable (type 3, code 0) */
   if(type == 3 && code == 0)
   {
@@ -228,7 +176,6 @@ void sr_send_icmp_error_packet(uint8_t type,
   /* Liberar memoria asignada */
   free(icmpPacket);
   printf("libero\n");
->>>>>>> juani
 } /* -- sr_send_icmp_error_packet -- */
 
 void sr_handle_ip_packet(struct sr_instance *sr,
@@ -247,31 +194,6 @@ void sr_handle_ip_packet(struct sr_instance *sr,
   * - Sino, verificar TTL, ARP y reenviar si corresponde (puede necesitar una solicitud ARP y esperar la respuesta)
   * - No olvide imprimir los mensajes de depuración
   */
-<<<<<<< HEAD
-
-  printf("*** -> Print Ethernet header.\n");
-  print_hdr_eth(packet);
-
-  printf("*** -> Print IP header.\n");
-  print_hdr_ip(packet + sizeof(sr_ethernet_hdr_t));
-
-  printf("*** -> Print ICMP header.\n");
-  print_hdr_icmp(packet + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t) );
-
-  /* Obtener el encabezado IP */
-  sr_ip_hdr_t *ipHdr = (sr_ip_hdr_t *)(packet + sizeof(sr_ethernet_hdr_t));
-  /* Verificar si el paquete es para una de mis interfaces */
-  printf("Destination IP: %s\n", inet_ntoa(*(struct in_addr *)&ipHdr->ip_dst));
-  sr_print_if_list(sr);
-  printf("Interface: %s\n", interface);
-  struct sr_if *myInterface2 = sr_get_interface(sr, interface);
-  sr_print_if(myInterface2);
-  struct sr_if *myInterface = sr_get_interface_given_ip(sr, ipHdr->ip_dst);
-
-  sr_print_if(myInterface2);
-
-  if (myInterface2) {
-=======
 
   sr_ip_hdr_t *ipHdr = (sr_ip_hdr_t *)(packet + sizeof(sr_ethernet_hdr_t));
 
@@ -290,15 +212,11 @@ void sr_handle_ip_packet(struct sr_instance *sr,
   struct sr_if *myInterface = sr_get_interface_given_ip(sr, ipHdr->ip_dst);
   
   if (myInterface) {
->>>>>>> juani
     /* Si el paquete es para mí */
     printf("**** -> IP packet is for me.\n");
     if (ipHdr->ip_p == ip_protocol_icmp) {
       sr_icmp_hdr_t *icmpHdr = (sr_icmp_hdr_t *)(packet + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t));
-<<<<<<< HEAD
-=======
       print_hdr_icmp((uint8_t *) icmpHdr);
->>>>>>> juani
       if (icmpHdr->icmp_type == 8) {  /* ICMP echo request */
         printf("**** -> ICMP echo request received, sending echo reply.\n");
 
