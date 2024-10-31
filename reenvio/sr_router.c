@@ -301,7 +301,7 @@ void sr_handle_ip_packet(struct sr_instance *sr,
 
         if (arpReq){
           /*send all packets on the req->packets linked list*/
-          sr_arpreq_destroy(arpReq)
+          sr_arpreq_destroy(&(sr->cache), arpReq);
         }
 
         sr_send_packet(sr, packet, len, nameInterface);
