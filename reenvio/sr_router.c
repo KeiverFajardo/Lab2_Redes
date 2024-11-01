@@ -23,6 +23,8 @@
 
 #include <stdint.h>
 #include <arpa/inet.h>
+#include <netinet/in.h>
+
 
 /*---------------------------------------------------------------------
  * Method: sr_init(void)
@@ -53,7 +55,7 @@ void sr_init(struct sr_instance* sr)
 
 
 /* Función que encuentra el nombre de la interfaz con la coincidencia de prefijo más larga*/
-char* longest_prefix_match(struct sr_instance* sr, uint32_t ip_dst) {
+  sr_rt longest_prefix_match(struct sr_instance* sr, uint32_t ip_dst) {
     struct sr_rt* rt_entry = sr->routing_table;
     struct sr_rt* best_match = NULL;
     uint32_t longest_match_len = 0;
@@ -86,7 +88,7 @@ char* longest_prefix_match(struct sr_instance* sr, uint32_t ip_dst) {
     }
 
     /* Si se encontró la mejor coincidencia, devuelve el nombre de la interfaz asociada */
-    return best_match ? best_match->interface : NULL;
+    return best_match ? best_match : NULL;
 }
 
 
@@ -106,6 +108,7 @@ void sr_send_icmp_error_packet(uint8_t type,
 {
   /* Definir el tamaño del nuevo paquete ICMP (Ethernet + IP + ICMP) */
   int icmpPacketLen = sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t) + sizeof(sr_icmp_t3_hdr_t);
+
   uint8_t *icmpPacket = malloc(icmpPacketLen);
   if (!icmpPacket) {
     fprintf(stderr, "Error al asignar memoria para el paquete ICMP\n");
@@ -167,7 +170,7 @@ void sr_send_icmp_error_packet(uint8_t type,
   print_hdrs(icmpPacket, icmpPacketLen);
 
   /* -- Enviar el paquete ICMP -- */
-   char* nameInterface = longest_prefix_match(sr, ipDst);
+  char* nameInterface = longest_prefix_match(sr, ipDst);
   sr_send_packet(sr, icmpPacket, icmpPacketLen, nameInterface);
 
   /* Liberar memoria asignada */
@@ -209,7 +212,7 @@ void sr_handle_ip_packet(struct sr_instance *sr,
     /* Verificar si el paquete es para una de mis interfaces */
     struct sr_if *myInterface = sr_get_interface_given_ip(sr, ipHdr->ip_dst);
 
-    /*^ AHI NO SE SI NO HAY QUE VERIFICAR LA DIRECCION MAC DESTINO SEA IGUAL A LA MAC DE LA INTERFAZ*/
+    /*^ AHI CREO QUE TAMBIEN HAY QUE VERIFICAR QUE LA DIRECCION MAC DESTINO SEA IGUAL A LA MAC DE LA INTERFAZ*/
 
     if (myInterface) {
 
@@ -305,8 +308,9 @@ void sr_handle_ip_packet(struct sr_instance *sr,
             ipHdr->ip_sum = ip_cksum(ipHdr, sizeof(sr_ip_hdr_t));
 
             /* Buscar la dirección MAC de la siguiente interfaz en la tabla ARP */
-            struct sr_arpentry *arpEntry = sr_arpcache_lookup(&(sr->cache), ipHdr->ip_dst);
-
+            struct sr_rt *rtEntry = sr_find_routing_entry(sr, ipHdr->ip_dst);
+            sr_print_routing_entry(rtEntry);
+            struct sr_arpentry *arpEntry = sr_arpcache_lookup(&(sr->cache), rtEntry->gw.s_addr);
             if (arpEntry) {
                 /* Reenviar el paquete si hay coincidencia en la tabla ARP */
                 printf("**** -> Forwarding IP packet.\n");
@@ -323,7 +327,9 @@ void sr_handle_ip_packet(struct sr_instance *sr,
                 /* Solicitar ARP si no hay coincidencia y poner el paquete en espera */
                 printf("**** -> No ARP entry, sending ARP request and queueing packet.\n");
                 struct sr_arpreq *arpReq = sr_arpcache_queuereq(&(sr->cache), ipHdr->ip_dst, packet, len, nameInterface);
+                if(arpReq){
                 handle_arpreq(sr, arpReq);
+                }
                 return;
             }
         }
