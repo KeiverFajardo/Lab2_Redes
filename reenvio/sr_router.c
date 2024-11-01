@@ -278,12 +278,12 @@ void sr_handle_ip_packet(struct sr_instance *sr,
           printf("**** -> Forwarding IP packet.\n");
 
           memcpy(eHdr->ether_dhost, arpEntry->mac, ETHER_ADDR_LEN);
-          memcpy(eHdr->ether_shost, myInterface->addr, ETHER_ADDR_LEN);
+          memcpy(eHdr->ether_shost, destAddr, ETHER_ADDR_LEN);
 
           sr_send_packet(sr, packet, len, nameInterface);
 
           /*  You must free the returned structure if it is not NULL */
-          free(arpEntry);
+          /*free(arpEntry);*/
           printf("$$$ -> Sent sr_send_packet complete luego de conseguir la mac directamente.\n");
           return;
       } else {
@@ -291,20 +291,6 @@ void sr_handle_ip_packet(struct sr_instance *sr,
           printf("**** -> No ARP entry, sending ARP request and queueing packet.\n");
           struct sr_arpreq *arpReq = sr_arpcache_queuereq(&(sr->cache), ipHdr->ip_dst, packet, len, nameInterface);
           handle_arpreq(sr, arpReq);
-
-          /*esperar respuesta arp y al recibir respuesta arp responder y send a todos los que estaban esperando*/
-          /*struct sr_arpentry *arpEntryWait = sr_arpcache_lookup(&(sr->cache), ipHdr->ip_dst);
-          while (arpEntryWait == NULL){
-            struct sr_arpentry *arpEntryWait = sr_arpcache_lookup(&(sr->cache), ipHdr->ip_dst);
-          }
-
-          memcpy(eHdr->ether_dhost, arpEntryWait->mac, ETHER_ADDR_LEN);
-          memcpy(eHdr->ether_shost, destAddr, ETHER_ADDR_LEN);*/
-          sr_send_packet(sr, packet, len, nameInterface);
-
-           /*  You must free the returned structure if it is not NULL */
-          /*free(arpEntryWait);*/
-          printf("$$$ -> Sent sr_send_packet complete luego de conseguir la mac de la cola de espera.\n");
           return;
       }
     }
