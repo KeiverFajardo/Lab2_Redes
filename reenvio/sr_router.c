@@ -54,8 +54,10 @@ void sr_init(struct sr_instance* sr)
 } /* -- sr_init -- */
 
 
-/* Función que encuentra el nombre de la interfaz con la coincidencia de prefijo más larga*/
-  sr_rt longest_prefix_match(struct sr_instance* sr, uint32_t ip_dst) {
+struct sr_rt* longest_prefix_match(struct sr_instance* sr, uint32_t ip_dst) {
+    printf("HHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHH\n");
+    sr_print_routing_table(sr);
+    
     struct sr_rt* rt_entry = sr->routing_table;
     struct sr_rt* best_match = NULL;
     uint32_t longest_match_len = 0;
@@ -87,9 +89,14 @@ void sr_init(struct sr_instance* sr)
         rt_entry = rt_entry->next;
     }
 
-    /* Si se encontró la mejor coincidencia, devuelve el nombre de la interfaz asociada */
-    return best_match ? best_match : NULL;
+    /* Si se encontró la mejor coincidencia, devolver la entrada de la tabla de enrutamiento */
+    printf("*******************\n");
+    sr_print_routing_entry(best_match);
+    return best_match;
 }
+
+
+
 
 
 /*-----------------------------------------------------------------------------------------------------------------*/
@@ -308,8 +315,10 @@ void sr_handle_ip_packet(struct sr_instance *sr,
             ipHdr->ip_sum = ip_cksum(ipHdr, sizeof(sr_ip_hdr_t));
 
             /* Buscar la dirección MAC de la siguiente interfaz en la tabla ARP */
-            struct sr_rt *rtEntry = sr_find_routing_entry(sr, ipHdr->ip_dst);
-            sr_print_routing_entry(rtEntry);
+            printf("||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||| \n");
+            
+            
+            print_addr_ip_int(rtEntry->gw.s_addr);
             struct sr_arpentry *arpEntry = sr_arpcache_lookup(&(sr->cache), rtEntry->gw.s_addr);
             if (arpEntry) {
                 /* Reenviar el paquete si hay coincidencia en la tabla ARP */
@@ -335,6 +344,13 @@ void sr_handle_ip_packet(struct sr_instance *sr,
         }
     }
 }
+
+
+/*
+TO DO:
+Me queda cambiar lo de nameInterface a lo que devuelve la funcion logest_pef..() -> interface
+Cambiar a que mande eso la busqueda de la cache
+*/
 
 
 /*--------------------------------------------------------------------------------------------------------------------------------------*/
