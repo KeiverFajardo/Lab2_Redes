@@ -90,6 +90,12 @@ char* longest_prefix_match(struct sr_instance* sr, uint32_t ip_dst) {
 }
 
 
+/*-----------------------------------------------------------------------------------------------------------------*/
+/*-----------------------------------------------------------------------------------------------------------------*/
+/*-------------------------------------SEND ICMP ERROR------------------------------------------------------------*/
+/*-----------------------------------------------------------------------------------------------------------------*/
+/*-----------------------------------------------------------------------------------------------------------------*/
+
 
 /* Envía un paquete ICMP de error */
 void sr_send_icmp_error_packet(uint8_t type,
@@ -169,6 +175,14 @@ void sr_send_icmp_error_packet(uint8_t type,
   printf("$$$ -> Sending error icmp.\n");
 } /* -- sr_send_icmp_error_packet -- */
 
+
+/*-----------------------------------------------------------------------------------------------------------------*/
+/*-----------------------------------------------------------------------------------------------------------------*/
+/*-------------------------------------HANDLE IP PACKET------------------------------------------------------------*/
+/*-----------------------------------------------------------------------------------------------------------------*/
+/*-----------------------------------------------------------------------------------------------------------------*/
+
+
 void sr_handle_ip_packet(struct sr_instance *sr,
         uint8_t *packet /* lent */,
         unsigned int len,
@@ -177,125 +191,152 @@ void sr_handle_ip_packet(struct sr_instance *sr,
         char *interface /* lent */,
         sr_ethernet_hdr_t *eHdr) {
 
-  /* - COLOQUE ASÍ SU CÓDIGO 
-  
-  * - Verificar si el paquete es para una de mis interfaces o si hay una coincidencia en mi tabla de enrutamiento 
-  * - Si no es para una de mis interfaces y no hay coincidencia en la tabla de enrutamiento, enviar ICMP net unreachable
-  * - Sino, si es para mí, verificar si es un paquete ICMP echo request y responder con un echo reply 
-  * - Sino, verificar TTL, ARP y reenviar si corresponde (puede necesitar una solicitud ARP y esperar la respuesta)
-  * - No olvide imprimir los mensajes de depuración
-  */
+    /* Imprimir cabezales */ 
+    printf("$$$ -> Imprimir cabezales ip packet recibido.\n");
+    print_hdrs(packet, len);
 
-  /* Imprimir cabezales */ 
-  printf("$$$ -> Imprimir cabezales ip packet recibido.\n");
-  print_hdrs(packet, len);
+    sr_ip_hdr_t *ipHdr = (sr_ip_hdr_t *)(packet + sizeof(sr_ethernet_hdr_t));
 
-  sr_ip_hdr_t *ipHdr = (sr_ip_hdr_t *)(packet + sizeof(sr_ethernet_hdr_t));
+    /* Verificar checksum del cabezal ip */
+    uint16_t sum = ipHdr->ip_sum;
+    ipHdr->ip_sum = 0;
+    uint16_t new_sum = ip_cksum(ipHdr, sizeof(sr_ip_hdr_t));
+    ipHdr->ip_sum = sum;
+    if (new_sum != sum) {
+        printf("checksumIp invalid");
+    }
 
-  /* Verificar checksum del cabezal ip */
-  uint16_t sum = ipHdr->ip_sum;
-  ipHdr->ip_sum = 0;
-  uint16_t new_sum = ip_cksum(ipHdr, sizeof(sr_ip_hdr_t));
-  ipHdr->ip_sum = sum;
-  if(new_sum != sum){
-    printf("checksumIp invalid");
-  }
+    /* Verificar si el paquete es para una de mis interfaces */
+    struct sr_if *myInterface = sr_get_interface_given_ip(sr, ipHdr->ip_dst);
 
-  /* Verificar si el paquete es para una de mis interfaces */
-  struct sr_if *myInterface = sr_get_interface_given_ip(sr, ipHdr->ip_dst);
-  
-  if (myInterface) {
-    printf("**** -> IP packet is for me.\n");
-    if (ipHdr->ip_p == ip_protocol_icmp) {
-      sr_icmp_hdr_t *icmpHdr = (sr_icmp_hdr_t *)(packet + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t));
-      /*print_hdr_icmp((uint8_t *) icmpHdr);*/
-      if (icmpHdr->icmp_type == 8) { 
-        printf("**** -> ICMP echo request received, sending echo reply.\n");
+    /*^ AHI NO SE SI NO HAY QUE VERIFICAR LA DIRECCION MAC DESTINO SEA IGUAL A LA MAC DE LA INTERFAZ*/
 
-        /* Cambiar el tipo a Echo Reply (0) y recalcular el checksum ICMP */
-        icmpHdr->icmp_type = 0; 
-        icmpHdr->icmp_code = 0;
-        icmpHdr->icmp_sum = 0; 
-        icmpHdr->icmp_sum = cksum(icmpHdr, len - sizeof(sr_ethernet_hdr_t) - sizeof(sr_ip_hdr_t));
+    if (myInterface) {
 
-        /* Intercambiar las direcciones IP de origen y destino en el encabezado IP */
-        uint32_t temp_ip = ipHdr->ip_src;
-        ipHdr->ip_src = ipHdr->ip_dst;
-        ipHdr->ip_dst = temp_ip;
-        ipHdr->ip_sum = 0; 
-        ipHdr->ip_sum = cksum(ipHdr, sizeof(sr_ip_hdr_t)); 
+        printf("**** -> IP packet is for me.\n");
+        if (ipHdr->ip_p == ip_protocol_icmp) {
+            sr_icmp_hdr_t *icmpHdr = (sr_icmp_hdr_t *)(packet + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t));
 
-        /* Intercambiar las direcciones MAC de origen y destino en el encabezado Ethernet */
-        memcpy(eHdr->ether_dhost, eHdr->ether_shost, ETHER_ADDR_LEN);
-        memcpy(eHdr->ether_shost, myInterface->addr, ETHER_ADDR_LEN);
+            /* CASE ECHO REPLY */
+            if (icmpHdr->icmp_type == 8 && icmpHdr->icmp_code == 0) {
+                printf("**** -> ICMP echo request received, sending echo reply.\n");
 
-        /* Enviar el paquete modificado como Echo Reply */
-        char* interfaceSalida = longest_prefix_match(sr,ipHdr->ip_dst);
-        if(interfaceSalida == NULL) printf("WARNING!!! No se consiguio la interfaz de salida en la tabla de enrutamiento\n");
-        sr_send_packet(sr, packet, len, interfaceSalida);
-        printf("$$$ -> Sent echo reply complete.\n");
+                /* Cambiar el tipo a Echo Reply (0) y recalcular el checksum ICMP */
+                icmpHdr->icmp_type = 0;
+                icmpHdr->icmp_code = 0;
+                icmpHdr->icmp_sum = 0;
+                icmpHdr->icmp_sum = cksum(icmpHdr, len - sizeof(sr_ethernet_hdr_t) - sizeof(sr_ip_hdr_t));
+
+                /* Intercambiar las direcciones IP de origen y destino en el encabezado IP */
+                uint32_t temp_ip = ipHdr->ip_src;
+                ipHdr->ip_src = ipHdr->ip_dst;
+                ipHdr->ip_dst = temp_ip;
+                ipHdr->ip_sum = 0;
+                ipHdr->ip_sum = cksum(ipHdr, sizeof(sr_ip_hdr_t));
+
+                /* Buscar en la tabla de enrutamiento si hay coincidencia */
+                char* nameInterface = longest_prefix_match(sr, ipHdr->ip_dst);
+
+                printf("%s\n", nameInterface);
+                /* No hay coincidencia en la tabla de enrutamiento */
+                if (nameInterface == NULL) {
+                    printf("**** -> No matching route, sending ICMP net unreachable.\n");
+                    sr_send_icmp_error_packet(3, 0, sr, ipHdr->ip_src, packet);
+                    printf("$$$ -> Sent sr_send_icmp_error_packet complete ICMP net unreachable.\n");
+                    return;
+                } else {
+                    /* Buscar la dirección MAC de la interfaz en la tabla ARP */
+                    
+                    print_addr_ip_int(sr->cache.entries[0].ip);
+                    struct sr_arpentry *arpEntry = sr_arpcache_lookup(&(sr->cache), ipHdr->ip_dst);
+
+                    if (arpEntry) {
+                        printf("**** -> Returning IP packet.\n");
+
+                        memcpy(eHdr->ether_dhost, arpEntry->mac, ETHER_ADDR_LEN);
+                        memcpy(eHdr->ether_shost, destAddr, ETHER_ADDR_LEN);
+
+                        sr_send_packet(sr, packet, len, nameInterface);
+                        /* free(arpEntry); */
+
+                        printf("$$$ -> Sent sr_send_packet complete luego de conseguir la mac directamente.\n");
+                        return;
+                    } else {
+                        /* Solicitar ARP si no hay coincidencia y poner el paquete en espera */
+                        printf("**** -> No ARP entry, sending ARP request and queueing packet.\n");
+                        struct sr_arpreq *arpReq = sr_arpcache_queuereq(&(sr->cache), ipHdr->ip_dst, packet, len, nameInterface);
+                        handle_arpreq(sr, arpReq);
+                        return;
+                    }
+                }
+            }
+        } else {
+            printf("**** -> CARGA TCP o UDP, sending ICMP Port unreachable.\n");
+            sr_send_icmp_error_packet(3, 3, sr, ipHdr->ip_src, packet);
+        }
+
+        /* Si no es ICMP, ignorar el paquete o manejar otros tipos */
+        printf("Packet is for me but not an ICMP request, ignoring\n");
         return;
-      }
     } else {
-      printf("**** -> CARGA TCP o UDP, sending ICMP Port unreachable.\n");
-      sr_send_icmp_error_packet(3, 3, sr, ipHdr->ip_src, packet);
+        printf("**** -> IP packet isn't for me.\n");
+        /* Verificar TTL */
+        if (ipHdr->ip_ttl <= 1) {
+            printf("**** -> TTL expired, sending ICMP TTL exceeded.\n");
+            sr_send_icmp_error_packet(11, 0, sr, ipHdr->ip_src, packet);
+            printf("$$$ -> Sent sr_send_icmp_error_packet complete ICMP TTL exceeded.\n");
+            return;
+        }
+
+        /* Buscar en la tabla de enrutamiento si hay coincidencia */
+        char* nameInterface = longest_prefix_match(sr, ipHdr->ip_dst);
+
+
+        /* No hay coincidencia en la tabla de enrutamiento */
+        if (nameInterface == NULL) {
+            printf("**** -> No matching route, sending ICMP net unreachable.\n");
+            sr_send_icmp_error_packet(3, 0, sr, ipHdr->ip_src, packet);
+            printf("$$$ -> Sent sr_send_icmp_error_packet complete ICMP net unreachable.\n");
+            return;
+        } else {
+            /* Si hay coincidencia en la tabla de enrutamiento */
+            ipHdr->ip_ttl--;
+            ipHdr->ip_sum = 0;
+            ipHdr->ip_sum = ip_cksum(ipHdr, sizeof(sr_ip_hdr_t));
+
+            /* Buscar la dirección MAC de la siguiente interfaz en la tabla ARP */
+            struct sr_arpentry *arpEntry = sr_arpcache_lookup(&(sr->cache), ipHdr->ip_dst);
+
+            if (arpEntry) {
+                /* Reenviar el paquete si hay coincidencia en la tabla ARP */
+                printf("**** -> Forwarding IP packet.\n");
+
+                memcpy(eHdr->ether_dhost, arpEntry->mac, ETHER_ADDR_LEN);
+                memcpy(eHdr->ether_shost, destAddr, ETHER_ADDR_LEN);
+
+                sr_send_packet(sr, packet, len, nameInterface);
+                /* free(arpEntry); */
+
+                printf("$$$ -> Sent sr_send_packet complete luego de conseguir la mac directamente.\n");
+                return;
+            } else {
+                /* Solicitar ARP si no hay coincidencia y poner el paquete en espera */
+                printf("**** -> No ARP entry, sending ARP request and queueing packet.\n");
+                struct sr_arpreq *arpReq = sr_arpcache_queuereq(&(sr->cache), ipHdr->ip_dst, packet, len, nameInterface);
+                handle_arpreq(sr, arpReq);
+                return;
+            }
+        }
     }
-
-    /* Si no es ICMP, ignorar el paquete o manejar otros tipos */
-    printf("Packet is for me but not an ICMP request, ignoring\n");
-    return;
-  }
-  else{
-    printf("**** -> IP packet isn't for me.\n");
-    /* Verificar TTL */
-    if (ipHdr->ip_ttl <= 1) {
-      /* TTL expirado, enviar ICMP TTL exceeded */
-      printf("**** -> TTL expired, sending ICMP TTL exceeded.\n");
-      sr_send_icmp_error_packet(11, 0, sr, ipHdr->ip_src, packet);
-      printf("$$$ -> Sent sr_send_icmp_error_packet complete ICMP TTL exceeded.\n");
-      return;
-    }
-
-    /* Buscar en la tabla de enrutamiento si hay coincidencia */ 
-    char* nameInterface = longest_prefix_match(sr, ipHdr->ip_dst);
-    /* No hay coincidencia en la tabla de enrutamiento */
-    if(nameInterface == NULL){
-      printf("**** -> No matching route, sending ICMP net unreachable.\n");
-      sr_send_icmp_error_packet(3, 0, sr, ipHdr->ip_src, packet);
-      printf("$$$ -> Sent sr_send_icmp_error_packet complete ICMP net unreachable.\n");
-      return;
-    } else {
-      /* Si hay coincidencia en la tabla de enrutamiento */
-      /* Reducir TTL y recalcular checksum */
-      ipHdr->ip_ttl--;
-      ipHdr->ip_sum = 0;
-      ipHdr->ip_sum = ip_cksum(ipHdr, sizeof(sr_ip_hdr_t));
-
-      /* Buscar la dirección MAC de la siguiente interfaz en la tabla ARP */
-      struct sr_arpentry *arpEntry = sr_arpcache_lookup(&(sr->cache), ipHdr->ip_dst);
-      if (arpEntry) {
-          /* Reenviar el paquete si hay coincidencia en la tabla ARP */
-          printf("**** -> Forwarding IP packet.\n");
-
-          memcpy(eHdr->ether_dhost, arpEntry->mac, ETHER_ADDR_LEN);
-          memcpy(eHdr->ether_shost, destAddr, ETHER_ADDR_LEN);
-
-          sr_send_packet(sr, packet, len, nameInterface);
-
-          /*  You must free the returned structure if it is not NULL */
-          /*free(arpEntry);*/
-          printf("$$$ -> Sent sr_send_packet complete luego de conseguir la mac directamente.\n");
-          return;
-      } else {
-          /* Solicitar ARP si no hay coincidencia y poner el paquete en espera */
-          printf("**** -> No ARP entry, sending ARP request and queueing packet.\n");
-          struct sr_arpreq *arpReq = sr_arpcache_queuereq(&(sr->cache), ipHdr->ip_dst, packet, len, nameInterface);
-          handle_arpreq(sr, arpReq);
-          return;
-      }
-    }
-  }
 }
+
+
+/*--------------------------------------------------------------------------------------------------------------------------------------*/
+/*--------------------------------------------------------------------------------------------------------------------------------------*/
+/*-----------------------------------------------------FIN------------------------------------------------------------------------------*/
+/*--------------------------------------------------------------------------------------------------------------------------------------*/
+/*--------------------------------------------------------------------------------------------------------------------------------------*/
+
 
 /* 
 * ***** A partir de aquí no debería tener que modificar nada ****
