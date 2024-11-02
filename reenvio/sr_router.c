@@ -177,8 +177,8 @@ void sr_send_icmp_error_packet(uint8_t type,
   print_hdrs(icmpPacket, icmpPacketLen);
 
   /* -- Enviar el paquete ICMP -- */
-  char* nameInterface = longest_prefix_match(sr, ipDst);
-  sr_send_packet(sr, icmpPacket, icmpPacketLen, nameInterface);
+  struct sr_rt* match = longest_prefix_match(sr, ipDst);
+  sr_send_packet(sr, icmpPacket, icmpPacketLen, match->interface);
 
   /* Liberar memoria asignada */
   free(icmpPacket);
@@ -218,7 +218,7 @@ void sr_handle_ip_packet(struct sr_instance *sr,
 
     /* Verificar si el paquete es para una de mis interfaces */
     struct sr_if *myInterface = sr_get_interface_given_ip(sr, ipHdr->ip_dst);
-
+    
     /*^ AHI CREO QUE TAMBIEN HAY QUE VERIFICAR QUE LA DIRECCION MAC DESTINO SEA IGUAL A LA MAC DE LA INTERFAZ*/
 
     if (myInterface) {
@@ -245,11 +245,10 @@ void sr_handle_ip_packet(struct sr_instance *sr,
                 ipHdr->ip_sum = cksum(ipHdr, sizeof(sr_ip_hdr_t));
 
                 /* Buscar en la tabla de enrutamiento si hay coincidencia */
-                char* nameInterface = longest_prefix_match(sr, ipHdr->ip_dst);
+                struct sr_rt *match = longest_prefix_match(sr, ipHdr->ip_dst);
 
-                printf("%s\n", nameInterface);
                 /* No hay coincidencia en la tabla de enrutamiento */
-                if (nameInterface == NULL) {
+                if (!match) {
                     printf("**** -> No matching route, sending ICMP net unreachable.\n");
                     sr_send_icmp_error_packet(3, 0, sr, ipHdr->ip_src, packet);
                     printf("$$$ -> Sent sr_send_icmp_error_packet complete ICMP net unreachable.\n");
@@ -257,8 +256,8 @@ void sr_handle_ip_packet(struct sr_instance *sr,
                 } else {
                     /* Buscar la dirección MAC de la interfaz en la tabla ARP */
                     
-                    print_addr_ip_int(sr->cache.entries[0].ip);
-                    struct sr_arpentry *arpEntry = sr_arpcache_lookup(&(sr->cache), ipHdr->ip_dst);
+                    /* print_addr_ip_int(sr->cache.entries[0].ip) */
+                    struct sr_arpentry *arpEntry = sr_arpcache_lookup(&(sr->cache), myInterface->ip);
 
                     if (arpEntry) {
                         printf("**** -> Returning IP packet.\n");
@@ -266,7 +265,7 @@ void sr_handle_ip_packet(struct sr_instance *sr,
                         memcpy(eHdr->ether_dhost, arpEntry->mac, ETHER_ADDR_LEN);
                         memcpy(eHdr->ether_shost, destAddr, ETHER_ADDR_LEN);
 
-                        sr_send_packet(sr, packet, len, nameInterface);
+                        sr_send_packet(sr, packet, len, match->interface);
                         /* free(arpEntry); */
 
                         printf("$$$ -> Sent sr_send_packet complete luego de conseguir la mac directamente.\n");
@@ -274,8 +273,8 @@ void sr_handle_ip_packet(struct sr_instance *sr,
                     } else {
                         /* Solicitar ARP si no hay coincidencia y poner el paquete en espera */
                         printf("**** -> No ARP entry, sending ARP request and queueing packet.\n");
-                        struct sr_arpreq *arpReq = sr_arpcache_queuereq(&(sr->cache), ipHdr->ip_dst, packet, len, nameInterface);
-                        handle_arpreq(sr, arpReq);
+                        struct sr_arpreq *arpReq = sr_arpcache_queuereq(&(sr->cache), ipHdr->ip_dst, packet, len, match->interface);
+                        if (arpReq) handle_arpreq(sr, arpReq);
                         return;
                     }
                 }
@@ -299,11 +298,10 @@ void sr_handle_ip_packet(struct sr_instance *sr,
         }
 
         /* Buscar en la tabla de enrutamiento si hay coincidencia */
-        char* nameInterface = longest_prefix_match(sr, ipHdr->ip_dst);
-
+        struct sr_rt *match2 = longest_prefix_match(sr, ipHdr->ip_dst);
 
         /* No hay coincidencia en la tabla de enrutamiento */
-        if (nameInterface == NULL) {
+        if (!match2) {
             printf("**** -> No matching route, sending ICMP net unreachable.\n");
             sr_send_icmp_error_packet(3, 0, sr, ipHdr->ip_src, packet);
             printf("$$$ -> Sent sr_send_icmp_error_packet complete ICMP net unreachable.\n");
@@ -316,10 +314,9 @@ void sr_handle_ip_packet(struct sr_instance *sr,
 
             /* Buscar la dirección MAC de la siguiente interfaz en la tabla ARP */
             printf("||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||| \n");
-            
-            
-            print_addr_ip_int(rtEntry->gw.s_addr);
-            struct sr_arpentry *arpEntry = sr_arpcache_lookup(&(sr->cache), rtEntry->gw.s_addr);
+            sr_print_routing_entry(match2);
+            print_addr_ip_int(match2->gw.s_addr);
+            struct sr_arpentry *arpEntry = sr_arpcache_lookup(&(sr->cache), match2->gw.s_addr);
             if (arpEntry) {
                 /* Reenviar el paquete si hay coincidencia en la tabla ARP */
                 printf("**** -> Forwarding IP packet.\n");
@@ -327,7 +324,7 @@ void sr_handle_ip_packet(struct sr_instance *sr,
                 memcpy(eHdr->ether_dhost, arpEntry->mac, ETHER_ADDR_LEN);
                 memcpy(eHdr->ether_shost, destAddr, ETHER_ADDR_LEN);
 
-                sr_send_packet(sr, packet, len, nameInterface);
+                sr_send_packet(sr, packet, len, match2->interface);
                 /* free(arpEntry); */
 
                 printf("$$$ -> Sent sr_send_packet complete luego de conseguir la mac directamente.\n");
@@ -335,10 +332,8 @@ void sr_handle_ip_packet(struct sr_instance *sr,
             } else {
                 /* Solicitar ARP si no hay coincidencia y poner el paquete en espera */
                 printf("**** -> No ARP entry, sending ARP request and queueing packet.\n");
-                struct sr_arpreq *arpReq = sr_arpcache_queuereq(&(sr->cache), ipHdr->ip_dst, packet, len, nameInterface);
-                if(arpReq){
-                handle_arpreq(sr, arpReq);
-                }
+                struct sr_arpreq *arpReq = sr_arpcache_queuereq(&(sr->cache), ipHdr->ip_dst, packet, len, match2->interface);
+                if(arpReq) handle_arpreq(sr, arpReq);
                 return;
             }
         }
