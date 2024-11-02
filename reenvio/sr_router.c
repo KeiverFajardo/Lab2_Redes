@@ -178,6 +178,7 @@ void sr_send_icmp_error_packet(uint8_t type,
 
   /* -- Enviar el paquete ICMP -- */
   struct sr_rt* match = longest_prefix_match(sr, ipDst);
+  printf("Interface: %s\n",  match->interface);
   sr_send_packet(sr, icmpPacket, icmpPacketLen, match->interface);
 
   /* Liberar memoria asignada */
@@ -265,6 +266,7 @@ void sr_handle_ip_packet(struct sr_instance *sr,
                         memcpy(eHdr->ether_dhost, arpEntry->mac, ETHER_ADDR_LEN);
                         memcpy(eHdr->ether_shost, destAddr, ETHER_ADDR_LEN);
 
+                        printf("Interface: %s\n",  match->interface);
                         sr_send_packet(sr, packet, len, match->interface);
                         /* free(arpEntry); */
 
@@ -273,7 +275,7 @@ void sr_handle_ip_packet(struct sr_instance *sr,
                     } else {
                         /* Solicitar ARP si no hay coincidencia y poner el paquete en espera */
                         printf("**** -> No ARP entry, sending ARP request and queueing packet.\n");
-                        struct sr_arpreq *arpReq = sr_arpcache_queuereq(&(sr->cache), ipHdr->ip_dst, packet, len, match->interface);
+                        struct sr_arpreq *arpReq = sr_arpcache_queuereq(&(sr->cache), match->gw.s_addr, packet, len, match->interface);
                         if (arpReq) handle_arpreq(sr, arpReq);
                         return;
                     }
@@ -324,6 +326,7 @@ void sr_handle_ip_packet(struct sr_instance *sr,
                 memcpy(eHdr->ether_dhost, arpEntry->mac, ETHER_ADDR_LEN);
                 memcpy(eHdr->ether_shost, destAddr, ETHER_ADDR_LEN);
 
+                printf("Interface: %s\n",  match2->interface);
                 sr_send_packet(sr, packet, len, match2->interface);
                 /* free(arpEntry); */
 
@@ -332,7 +335,7 @@ void sr_handle_ip_packet(struct sr_instance *sr,
             } else {
                 /* Solicitar ARP si no hay coincidencia y poner el paquete en espera */
                 printf("**** -> No ARP entry, sending ARP request and queueing packet.\n");
-                struct sr_arpreq *arpReq = sr_arpcache_queuereq(&(sr->cache), ipHdr->ip_dst, packet, len, match2->interface);
+                struct sr_arpreq *arpReq = sr_arpcache_queuereq(&(sr->cache), match2->gw.s_addr, packet, len, match2->interface);
                 if(arpReq) handle_arpreq(sr, arpReq);
                 return;
             }
@@ -379,6 +382,7 @@ void sr_arp_reply_send_pending_packets(struct sr_instance *sr,
      memcpy(copyPacket, ethHdr, sizeof(uint8_t) * currPacket->len);
 
      print_hdrs(copyPacket, currPacket->len);
+     printf("Interface: %s\n",  iface->name);
      sr_send_packet(sr, copyPacket, currPacket->len, iface->name);
      currPacket = currPacket->next;
   }
@@ -436,7 +440,7 @@ void sr_handle_arp_packet(struct sr_instance *sr,
 
       /* Imprimo el cabezal del ARP reply creado */
       print_hdrs(packet, len);
-
+      printf("Interface: %s\n",  myInterface->name);
       sr_send_packet(sr, packet, len, myInterface->name);
     }
 
