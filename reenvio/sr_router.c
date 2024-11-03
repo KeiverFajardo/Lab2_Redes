@@ -267,17 +267,7 @@ void sr_handle_ip_packet(struct sr_instance *sr,
     if (new_sum != sum) {
         printf("checksumIp invalid");
     }
-    printf("IP TTL: %u\n", ipHdr->ip_ttl);
-    ipHdr->ip_ttl--;
-    printf("IP TTL -- : %u\n", ipHdr->ip_ttl);
-    /* Verificar TTL */
-    if (ipHdr->ip_ttl < 1) {
-        printf("**** -> TTL expired, sending ICMP TTL exceeded.\n");
-        sr_send_icmp_error_packet(11, 0, sr, ipHdr->ip_src, packet);
-        printf("$$$ -> Sent sr_send_icmp_error_packet complete ICMP TTL exceeded.\n");
-        return;
-    }
-
+    
     /* Verificar si el paquete es para una de mis interfaces */
     struct sr_if *myInterface = sr_get_interface_given_ip(sr, ipHdr->ip_dst);
     
@@ -371,6 +361,19 @@ void sr_handle_ip_packet(struct sr_instance *sr,
     /*----------------------------------------------------------*/
 
     } else {
+        printf("IP TTL: %u\n", ipHdr->ip_ttl);
+        ipHdr->ip_ttl--;
+        ipHdr->ip_sum = 0;
+        ipHdr->ip_sum = ip_cksum(ipHdr, sizeof(sr_ip_hdr_t));
+        
+        printf("IP TTL -- : %u\n", ipHdr->ip_ttl);
+        /* Verificar TTL */
+        if (ipHdr->ip_ttl < 1) {
+            printf("**** -> TTL expired, sending ICMP TTL exceeded.\n");
+            sr_send_icmp_error_packet(11, 0, sr, ipHdr->ip_src, packet);
+            printf("$$$ -> Sent sr_send_icmp_error_packet complete ICMP TTL exceeded.\n");
+            return;
+        }
         printf("**** -> IP packet isn't for me.\n");
         
         /* Buscar en la tabla de enrutamiento si hay coincidencia */
@@ -383,10 +386,6 @@ void sr_handle_ip_packet(struct sr_instance *sr,
             printf("$$$ -> Sent sr_send_icmp_error_packet complete ICMP net unreachable.\n");
             return;
         } else {
-            /* Si hay coincidencia en la tabla de enrutamiento */
-            ipHdr->ip_sum = 0;
-            ipHdr->ip_sum = ip_cksum(ipHdr, sizeof(sr_ip_hdr_t));
-
             /* Buscar la dirección MAC de la siguiente interfaz en la tabla ARP */
             printf("NEXT HOP: \n");
             print_addr_ip_int(match2->gw.s_addr);
