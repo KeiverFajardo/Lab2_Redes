@@ -199,6 +199,7 @@ void sr_send_icmp_error_packet(uint8_t type,
           printf("**** -> Returning IP packet ERROR.\n");
           memcpy(ethHdr->ether_shost, origEthHdr->ether_dhost, ETHER_ADDR_LEN);
           memcpy(ethHdr->ether_dhost, arpEntry->mac, ETHER_ADDR_LEN);
+          ethHdr->ether_type = htons(ethertype_ip);
           
           print_hdrs(icmpPacket, icmpPacketLen);
 
