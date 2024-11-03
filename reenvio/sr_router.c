@@ -171,6 +171,7 @@ void sr_send_icmp_error_packet(uint8_t type,
 
   /* No hay coincidencia en la tabla de enrutamiento */
   if (!match) {
+        printf("**** -> ///////////////////////////////////////////////////////////////////////////////////////////////.\n");
       printf("**** -> No matching route, sending ICMP net unreachable.\n");
       sr_send_icmp_error_packet(3, 0, sr, ipHdr->ip_src, icmpPacket);
       printf("$$$ -> Sent sr_send_icmp_error_packet complete ICMP net unreachable.\n");
@@ -198,6 +199,8 @@ void sr_send_icmp_error_packet(uint8_t type,
           printf("**** -> Returning IP packet ERROR.\n");
           memcpy(ethHdr->ether_shost, origEthHdr->ether_dhost, ETHER_ADDR_LEN);
           memcpy(ethHdr->ether_dhost, arpEntry->mac, ETHER_ADDR_LEN);
+          
+          print_hdrs(icmpPacket, icmpPacketLen);
 
           sr_send_packet(sr, icmpPacket, icmpPacketLen, match->interface);
           /* free(arpEntry); */
@@ -262,6 +265,16 @@ void sr_handle_ip_packet(struct sr_instance *sr,
     ipHdr->ip_sum = sum;
     if (new_sum != sum) {
         printf("checksumIp invalid");
+    }
+    printf("IP TTL: %u\n", ipHdr->ip_ttl);
+    ipHdr->ip_ttl--;
+    printf("IP TTL -- : %u\n", ipHdr->ip_ttl);
+    /* Verificar TTL */
+    if (ipHdr->ip_ttl < 1) {
+        printf("**** -> TTL expired, sending ICMP TTL exceeded.\n");
+        sr_send_icmp_error_packet(11, 0, sr, ipHdr->ip_src, packet);
+        printf("$$$ -> Sent sr_send_icmp_error_packet complete ICMP TTL exceeded.\n");
+        return;
     }
 
     /* Verificar si el paquete es para una de mis interfaces */
@@ -358,14 +371,7 @@ void sr_handle_ip_packet(struct sr_instance *sr,
 
     } else {
         printf("**** -> IP packet isn't for me.\n");
-        /* Verificar TTL */
-        if (ipHdr->ip_ttl <= 1) {
-            printf("**** -> TTL expired, sending ICMP TTL exceeded.\n");
-            sr_send_icmp_error_packet(11, 0, sr, ipHdr->ip_src, packet);
-            printf("$$$ -> Sent sr_send_icmp_error_packet complete ICMP TTL exceeded.\n");
-            return;
-        }
-
+        
         /* Buscar en la tabla de enrutamiento si hay coincidencia */
         struct sr_rt *match2 = longest_prefix_match(sr, ipHdr->ip_dst);
 
@@ -377,7 +383,6 @@ void sr_handle_ip_packet(struct sr_instance *sr,
             return;
         } else {
             /* Si hay coincidencia en la tabla de enrutamiento */
-            ipHdr->ip_ttl--;
             ipHdr->ip_sum = 0;
             ipHdr->ip_sum = ip_cksum(ipHdr, sizeof(sr_ip_hdr_t));
 
