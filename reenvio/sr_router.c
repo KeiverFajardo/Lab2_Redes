@@ -55,8 +55,6 @@ void sr_init(struct sr_instance* sr)
 
 
 struct sr_rt* longest_prefix_match(struct sr_instance* sr, uint32_t ip_dst) {
-    printf("HHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHH\n");
-    sr_print_routing_table(sr);
     
     struct sr_rt* rt_entry = sr->routing_table;
     struct sr_rt* best_match = NULL;
@@ -90,7 +88,7 @@ struct sr_rt* longest_prefix_match(struct sr_instance* sr, uint32_t ip_dst) {
     }
 
     /* Si se encontró la mejor coincidencia, devolver la entrada de la tabla de enrutamiento */
-    printf("*******************\n");
+    printf("**********BEST MATCH*********\n");
     sr_print_routing_entry(best_match);
     return best_match;
 }
@@ -202,9 +200,7 @@ void sr_handle_ip_packet(struct sr_instance *sr,
         char *interface /* lent */,
         sr_ethernet_hdr_t *eHdr) {
 
-    /* Imprimir cabezales */ 
-    printf("$$$ -> Imprimir cabezales ip packet recibido.\n");
-    print_hdrs(packet, len);
+    printf("|||||||||||||||||||---STARTING---|||||||||||||||||||\n");
 
     sr_ip_hdr_t *ipHdr = (sr_ip_hdr_t *)(packet + sizeof(sr_ethernet_hdr_t));
 
@@ -220,8 +216,6 @@ void sr_handle_ip_packet(struct sr_instance *sr,
     /* Verificar si el paquete es para una de mis interfaces */
     struct sr_if *myInterface = sr_get_interface_given_ip(sr, ipHdr->ip_dst);
     
-    /*^ AHI CREO QUE TAMBIEN HAY QUE VERIFICAR QUE LA DIRECCION MAC DESTINO SEA IGUAL A LA MAC DE LA INTERFAZ*/
-
     if (myInterface) {
 
         printf("**** -> IP packet is for me.\n");
@@ -254,30 +248,44 @@ void sr_handle_ip_packet(struct sr_instance *sr,
                     sr_send_icmp_error_packet(3, 0, sr, ipHdr->ip_src, packet);
                     printf("$$$ -> Sent sr_send_icmp_error_packet complete ICMP net unreachable.\n");
                     return;
-                } else {
+                }else {
                     /* Buscar la dirección MAC de la interfaz en la tabla ARP */
-                    
+                        
                     /* print_addr_ip_int(sr->cache.entries[0].ip) */
-                    struct sr_arpentry *arpEntry = sr_arpcache_lookup(&(sr->cache), myInterface->ip);
+                    struct sr_arpentry *arpEntry = sr_arpcache_lookup(&(sr->cache), match->gw.s_addr);
 
                     if (arpEntry) {
-                        printf("**** -> Returning IP packet.\n");
+                      /* Reenviar el paquete si hay coincidencia en la tabla ARP */
+                      printf("**** -> Returning IP packet.\n");
 
-                        memcpy(eHdr->ether_dhost, arpEntry->mac, ETHER_ADDR_LEN);
-                        memcpy(eHdr->ether_shost, destAddr, ETHER_ADDR_LEN);
+                      memcpy(eHdr->ether_dhost, arpEntry->mac, ETHER_ADDR_LEN);
+                      memcpy(eHdr->ether_shost, destAddr, ETHER_ADDR_LEN);
 
-                        printf("Interface: %s\n",  match->interface);
-                        sr_send_packet(sr, packet, len, match->interface);
-                        /* free(arpEntry); */
+                      printf("Interface: %s\n",  match->interface);
+                      sr_send_packet(sr, packet, len, match->interface);
+                      /* free(arpEntry); */
 
-                        printf("$$$ -> Sent sr_send_packet complete luego de conseguir la mac directamente.\n");
-                        return;
-                    } else {
-                        /* Solicitar ARP si no hay coincidencia y poner el paquete en espera */
-                        printf("**** -> No ARP entry, sending ARP request and queueing packet.\n");
-                        struct sr_arpreq *arpReq = sr_arpcache_queuereq(&(sr->cache), match->gw.s_addr, packet, len, match->interface);
-                        if (arpReq) handle_arpreq(sr, arpReq);
-                        return;
+                      printf("$$$ -> Sent sr_send_packet complete luego de conseguir la mac directamente.\n");
+                      return;
+                  } else {
+                      /* Solicitar ARP si no hay coincidencia y poner el paquete en espera */
+                      printf("**** -> No ARP entry, sending ARP request and queueing packet.\n");
+
+                      struct sr_arpreq *arpReq = NULL;  
+
+                      if (match->gw.s_addr == htonl(INADDR_ANY)) {
+                          printf("-------------DEFAULT ROUTE-------------\n");
+                          arpReq = sr_arpcache_queuereq(&(sr->cache), ipHdr->ip_dst, packet, len, match->interface);
+                      } else {
+                          printf("-------------NEXT ROUTE-------------\n");
+                          arpReq = sr_arpcache_queuereq(&(sr->cache), match->gw.s_addr, packet, len, match->interface);
+                      }
+
+                      if (arpReq) {
+                          printf("---------------- HANDLING ARP REQ ----------------------\n");
+                          handle_arpreq(sr, arpReq);
+                      }
+                      return;
                     }
                 }
             }
@@ -315,16 +323,35 @@ void sr_handle_ip_packet(struct sr_instance *sr,
             ipHdr->ip_sum = ip_cksum(ipHdr, sizeof(sr_ip_hdr_t));
 
             /* Buscar la dirección MAC de la siguiente interfaz en la tabla ARP */
-            printf("||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||| \n");
-            sr_print_routing_entry(match2);
+            printf("NEXT HOP: \n");
             print_addr_ip_int(match2->gw.s_addr);
-            struct sr_arpentry *arpEntry = sr_arpcache_lookup(&(sr->cache), match2->gw.s_addr);
+
+            struct sr_arpentry *arpEntry = NULL;  
+
+            if (match2->gw.s_addr == htonl(INADDR_ANY)) {
+                arpEntry = sr_arpcache_lookup(&(sr->cache), ipHdr->ip_dst);
+            } else {
+                arpEntry = sr_arpcache_lookup(&(sr->cache), match2->gw.s_addr);
+            }
+
             if (arpEntry) {
+
+              printf("MAC Address: %02x:%02x:%02x:%02x:%02x:%02x\n",
+              arpEntry->mac[0],
+              arpEntry->mac[1],
+              arpEntry->mac[2],
+              arpEntry->mac[3],
+              arpEntry->mac[4],
+              arpEntry->mac[5]);
+
                 /* Reenviar el paquete si hay coincidencia en la tabla ARP */
                 printf("**** -> Forwarding IP packet.\n");
-
+                printf("FROM:");
+                print_addr_eth(sr_get_interface(sr,match2->interface)->addr);
+                printf("TO:");
+                print_addr_eth(arpEntry->mac);
+                memcpy(eHdr->ether_shost, sr_get_interface(sr,match2->interface)->addr, ETHER_ADDR_LEN);
                 memcpy(eHdr->ether_dhost, arpEntry->mac, ETHER_ADDR_LEN);
-                memcpy(eHdr->ether_shost, destAddr, ETHER_ADDR_LEN);
 
                 printf("Interface: %s\n",  match2->interface);
                 sr_send_packet(sr, packet, len, match2->interface);
@@ -335,10 +362,24 @@ void sr_handle_ip_packet(struct sr_instance *sr,
             } else {
                 /* Solicitar ARP si no hay coincidencia y poner el paquete en espera */
                 printf("**** -> No ARP entry, sending ARP request and queueing packet.\n");
-                struct sr_arpreq *arpReq = sr_arpcache_queuereq(&(sr->cache), match2->gw.s_addr, packet, len, match2->interface);
-                if(arpReq) handle_arpreq(sr, arpReq);
+
+                struct sr_arpreq *arpReq = NULL;  
+
+                if (match2->gw.s_addr == htonl(INADDR_ANY)) {
+                    printf("-------------DEFAULT ROUTE-------------\n");
+                    arpReq = sr_arpcache_queuereq(&(sr->cache), ipHdr->ip_dst, packet, len, match2->interface);
+                } else {
+                    printf("-------------NEXT ROUTE-------------\n");
+                    arpReq = sr_arpcache_queuereq(&(sr->cache), match2->gw.s_addr, packet, len, match2->interface);
+                }
+
+                if (arpReq) {
+                    printf("---------------- HANDLING ARP REQ ----------------------\n");
+                    handle_arpreq(sr, arpReq);
+                }
                 return;
             }
+
         }
     }
 }
