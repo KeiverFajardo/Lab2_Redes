@@ -62,7 +62,7 @@ int pwospf_init(struct sr_instance* sr)
     assert(sr);
 
     sr->ospf_subsys = (struct pwospf_subsys*)malloc(sizeof(struct
-                                                      pwospf_subsys));
+                                                    pwospf_subsys));
 
     assert(sr->ospf_subsys);
     pthread_mutex_init(&(sr->ospf_subsys->lock), 0);
@@ -202,10 +202,13 @@ void* pwospf_run_thread(void* arg)
  *---------------------------------------------------------------------*/
 
 void* check_neighbors_life(void* arg)
-{
-    /* 
-    Cada 1 segundo, chequea la lista de vecinos.
-    */
+{/*Cada 1 segundo, chequea la lista de vecinos.*/
+    
+    while(1){
+        sleep(1);
+        check_neighbors_alive(g_neighbors)
+    };
+    
     return NULL;
 } /* -- check_neighbors_life -- */
 
@@ -221,14 +224,20 @@ void* check_neighbors_life(void* arg)
 void* check_topology_entries_age(void* arg)
 {
     struct sr_instance* sr = (struct sr_instance*)arg;
+    /* Cada 1 segundo, chequea el tiempo de vida de cada entrad ade la topologia.Si hay un cambio en la topología, se llama 
+    a la función de Dijkstra en un nuevo hilo.Se sugiere también imprimir la topología resultado del chequeo.*/
 
-    /* 
-    Cada 1 segundo, chequea el tiempo de vida de cada entrada
-    de la topologia.
-    Si hay un cambio en la topología, se llama a la función de Dijkstra
-    en un nuevo hilo.
-    Se sugiere también imprimir la topología resultado del chequeo.
-    */
+    while(1){
+        sleep(1);
+        if(check_topology_age(g_topology) == 1){
+            struct dijkstra_param* dijkstraParam = ((dijkstra_param)(malloc(sizeof(dijkstra_param))));
+            dijkstraParam->sr = sr;
+            dijkstraParam->topology;
+            /*CAPAZ FALTA MAS ATRIBUTOS*/
+            pthread_create(&g_dijkstra_thread,NULL,run_dijkstra,dijkstraParam);
+        }
+    }
+    
 
     return NULL;
 } /* -- check_topology_entries_age -- */
@@ -256,8 +265,31 @@ void* send_hellos(void* arg)
         pwospf_lock(sr->ospf_subsys);
 
         /* Chequeo todas las interfaces para enviar el paquete HELLO */
-            /* Cada interfaz matiene un contador en segundos para los HELLO*/
-            /* Reiniciar el contador de segundos para HELLO */
+        /* Cada interfaz matiene un contador en segundos para los HELLO*/
+        struct sr_if* ifaces = sr->if_list;
+        while (ifaces != NULL){
+
+            if(false){   /*CAMBIAR ESTO EL BOOLEANO QUE CONTROLA SI LA IFACE ESTA ACTIVA O NO*/
+                if(true){
+                    /* TERMINAR DE ESCRIBIR ESTE BLOQUE */
+                } 
+            }
+
+            if(ifaces->helloint > 0){
+                ifaces->helloint--;
+            }
+
+            else{
+                struct powspf_hello_lsu_param* hParam = ((powspf_hello_lsu_param_t*)(malloc(sizeof(powspf_hello_lsu_param))));
+                hParam->sr = sr;
+                hParam->interface = ifaces;
+                pthread_create(&g_hello_packet_thread,NULL,send_hello_packet,hParam);
+                /* Reiniciar el contador de segundos para HELLO */
+                ifaces->helloint = OSPF_DEFAULT_HELLOINT;
+            }
+            ifaces = ifaces->next;
+        }
+
 
         /* Desbloqueo */
         pwospf_unlock(sr->ospf_subsys);
@@ -281,37 +313,82 @@ void* send_hello_packet(void* arg)
 
     Debug("\n\nPWOSPF: Constructing HELLO packet for interface %s: \n", hello_param->interface->name);
     
-    /* Seteo la dirección MAC de multicast para la trama a enviar */
+    sr_ethernet_hdr_t* ethHeader = ((sr_ethernet_hdr_t*)(malloc(sizeof(sr_ethernet_hdr_t))));
     /* Seteo la dirección MAC origen con la dirección de mi interfaz de salida */
+    for(int i = 0; i<ETHER_ADDR_LEN; i++){
+    ethHeader->ether_shost[i] = ((unit8_t)(hello_param->interface->addr[i]));
+    }
+    /* Seteo la dirección MAC de multicast para la trama a enviar */
+    for (int i = 0; i <ETHER_ADDR_LEN; i++){
+        ethHeader->ether_dhost[i] = g_ospf_multicast_mac[i];
+    }
     /* Seteo el ether_type en el cabezal Ethernet */
+    ethHeader->ether_type = htons(ethertype_ip)
+
 
     /* Inicializo cabezal IP */
+    sr_ip_hdr_t* ipHeader = ((sr_ip_hdr_t*)(malloc(sizeof(sr_ip_hdr_t))));
+    ipHeader->ip_v = 4;  /* Versión IP (IPv4) */
+    ipHeader->ip_hl = sizeof(sr_ip_hdr_t) / 4;  /* Longitud del encabezado IP */
+    ipHeader->ip_tos = 0;  /* Tipo de servicio */
+    ipHeader->ip_len = htons(sizeof(sr_ip_hdr_t) + sizeof(ospfv2_hdr) + sizeof(ospfv2_hello_hdr));  /* Longitud total del paquete IP */
+    ipHeader->ip_id = 0;  /* ID de fragmentación (0 si no se fragmenta) */
+    ipHeader->ip_off = 0;  /* Bandera "Don't Fragment" */
+    ipHeader->ip_ttl = 64;  /* Time to Live */
     /* Seteo el protocolo en el cabezal IP para ser el de OSPF (89) */
+    ipHeader->ip_p = ip_protocol_ospfv2;
     /* Seteo IP origen con la IP de mi interfaz de salida */
+    ipHeader->ip_src.s_addr = hello_param->interface->ip;
     /* Seteo IP destino con la IP de Multicast dada: OSPF_AllSPFRouters  */
+    ipHeader->ipDst.s_addr = htonl(OSPF_AllSPFRouters);
     /* Calculo y seteo el chechsum IP*/
-    
+    ipHeader->ip_sum = 0;
+    ipHeader->ip_sum =  ip_cksum(ipHeader, sizeof(sr_ip_hdr_t));
+
+
     /* Inicializo cabezal de PWOSPF con version 2 y tipo HELLO */
-    
+    ospfv2_hdr_t* ospfHeader = ((ospfv2_hdr_t*)(malloc(sizeof(ospfv2_hdr_t))));
+    ospfv2_hello_hdr_t* ospfHelloHeader = ((ospfv2_hello_hdr_t*)(malloc(sizeof(ospfv2_hello_hdr_t))));
+
+
+    ospfHeader->version = OSPF_V2;
+    ospfHeader->type = OSPF_TYPE_HELLO;
     /* Seteo el Router ID con mi ID*/
+    ospfHeader->rid = g_router_id.s_addr
     /* Seteo el Area ID en 0 */
+    ospfHeader->aid = 0;
     /* Seteo el Authentication Type y Authentication Data en 0*/
+    ospfHeader->autype = 0;
+    ospfHeader->audata = 0;
+
     /* Seteo máscara con la máscara de mi interfaz de salida */
+    ospfHelloHeader->nmask = hello_param->interface->mask;
     /* Seteo Hello Interval con OSPF_DEFAULT_HELLOINT */
+    ospfHelloHeader->helloint = OSPF_DEFAULT_HELLOINT;
     /* Seteo Padding en 0*/
-
+    ospfHelloHeader->padding = 0;
     /* Creo el paquete a transmitir */
-   
+    unit8_t* packet = ((unit8_t*)(malloc(sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t) + sizeof(ospfv2_hdr_t) + sizeof(ospfv2_hello_hdr_t))));
+    memcpy(packet,ethHeader,sizeof(sr_ethernet_hdr_t));
+    memcpy(packet + sizeof(sr_ethernet_hdr_t),ipHeader,sizeof(sr_ip_hdr_t));
+    memcpy(packet + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t),ospfHeader,sizeof(ospfv2_hdr_t));
+    memcpy(packet + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t) + sizeof(ospfv2_hdr_t),ospfHelloHeader,sizeof(ospfv2_hello_hdr_t));
     /* Calculo y actualizo el checksum del cabezal OSPF */
-
+    ((ospfv2_hdr_t*)(packet + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t)))->csum = ospfv2_cksum(packet + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t), sizeof(ospfv2_hdr_t) + sizeof(ospfv2_hello_hdr_t));
     /* Envío el paquete HELLO */
+    sr_send_packet(hello_param->sr,packet,sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t) + sizeof(ospfv2_hdr_t) + sizeof(ospfv2_hello_hdr_t),hello_param->interface->name);
     /* Imprimo información del paquete HELLO enviado */
+    
+    print_hdr_ospf(packet + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t));
     /*
     Debug("-> PWOSPF: Sending HELLO Packet of length = %d, out of the interface: %s\n", packet_len, hello_param->interface->name);
     Debug("      [Router ID = %s]\n", inet_ntoa(g_router_id));
     Debug("      [Router IP = %s]\n", inet_ntoa(ip));
     Debug("      [Network Mask = %s]\n", inet_ntoa(mask));
     */
+    printf("----------------\n");
+    printf("FIN DE FUNC. SEND HELLO\n");
+    printf("----------------\n");
 
     return NULL;
 } /* -- send_hello_packet -- */
