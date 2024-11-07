@@ -98,7 +98,6 @@ struct sr_rt* longest_prefix_match(struct sr_instance* sr, uint32_t ip_dst) {
 
     /* Si se encontró la mejor coincidencia, devolver la entrada de la tabla de enrutamiento */
     printf("**********BEST MATCH*********\n");
-    sr_print_routing_entry(best_match);
     return best_match;
 }
 
@@ -293,12 +292,16 @@ void sr_handle_ip_packet(struct sr_instance *sr,
     
     /* Verificar si el paquete es para una de mis interfaces */
     struct sr_if *myInterface = sr_get_interface_given_ip(sr, ipHdr->ip_dst);
-    
+    printf("******************************\n");
+    print_addr_ip_int(ipHdr->ip_dst);
+    printf("------\n");
+    print_addr_ip_int(OSPF_AllSPFRouters);
+    printf("******************************\n");
     /*----------------------------------------------------------*/
     /*-----------------EL PAQUETE ES PARA MI--------------------*/
     /*----------------------------------------------------------*/
     
-    if (myInterface) {
+    if (myInterface || ipHdr->ip_dst == htonl(OSPF_AllSPFRouters) ) {
 
         printf("**** -> IP packet is for me.\n");
         if (ipHdr->ip_p == ip_protocol_icmp) {
@@ -373,7 +376,7 @@ void sr_handle_ip_packet(struct sr_instance *sr,
             }
         } else if (ipHdr->ip_p == ip_protocol_ospfv2){
             sr_handle_pwospf_packet(sr, packet, len, interface);
-        } else
+        } else{
             printf("**** -> CARGA TCP o UDP, sending ICMP Port unreachable.\n");
             sr_send_icmp_error_packet(3, 3, sr, ipHdr->ip_src, packet);
             printf("Packet is for me but not an ICMP request, ignoring\n");

@@ -205,7 +205,9 @@ void* pwospf_run_thread(void* arg)
 
 void* check_neighbors_life(void* arg)
 {/*Cada 1 segundo, chequea la lista de vecinos.*/
-    
+    printf("----------------\n");
+    printf("COMIENZO FUNC. CHECK NEIGHBORS LIFE\n");
+    printf("----------------\n");
     while(1){
         sleep(1);
         check_neighbors_alive(g_neighbors);
@@ -225,6 +227,10 @@ void* check_neighbors_life(void* arg)
 
 void* check_topology_entries_age(void* arg)
 {
+
+    printf("----------------\n");
+    printf("COMIENZO FUNC. CHECK TOP. ENTRY AGE\n");
+    printf("----------------\n");
     struct sr_instance* sr = (struct sr_instance*)arg;
     /* Cada 1 segundo, chequea el tiempo de vida de cada entrad ade la topologia.Si hay un cambio en la topología, se llama 
     a la función de Dijkstra en un nuevo hilo.Se sugiere también imprimir la topología resultado del chequeo.*/
@@ -257,6 +263,9 @@ void* send_hellos(void* arg)
 {
     struct sr_instance* sr = (struct sr_instance*)arg;
 
+    printf("----------------\n");
+    printf("COMIENZO DE FUNC. SEND HELLOSSSS\n");
+    printf("----------------\n");
     /* While true */
     while(1)
     {
@@ -411,7 +420,9 @@ void* send_hello_packet(void* arg)
 void* send_all_lsu(void* arg)
 {
     struct sr_instance* sr = (struct sr_instance*)arg;
-
+    printf("----------------\n");
+    printf("COMIENZO DE FUNC. SEND ALL LSU\n");
+    printf("----------------\n");
     /* while true*/
     while(1)
     {
@@ -650,7 +661,11 @@ void* send_lsu(void* arg)
     free(packet);
    /* Libero memoria */
 
-    /*PUEDE QUE HAYA QUE HACER EL LSU UPDATE??*/
+    printf("----------------\n");
+    printf("FIN FUNC. SEND LSU\n");
+    printf("----------------\n");
+
+    /*PUEDE QUE HAYA QUE HACER EL LSU UPDATE?? =================================================================*/
 
     return NULL;
 } /* -- send_lsu -- */
@@ -724,6 +739,10 @@ void sr_handle_pwospf_hello_packet(struct sr_instance* sr, uint8_t* packet, unsi
         pthread_create(&g_lsu_thread,NULL,send_lsu,paramLsu);
     }
 
+
+    printf("----------------\n");
+    printf("FIN HANDLE HELLO PACKET\n");
+    printf("----------------\n");
     /* Seteo el vecino en la interfaz por donde llegó y actualizo la lista de vecinos */
 
     /* Si es un nuevo vecino, debo enviar LSUs por todas mis interfaces*/
@@ -864,6 +883,10 @@ void* sr_handle_pwospf_lsu_packet(void* arg)
         ifaces = ifaces->next;
     }
 
+    
+    printf("----------------\n");
+    printf("FIN HANDLE LSU PACKET\n");
+    printf("----------------\n");
     return NULL;
 } /* -- sr_handle_pwospf_lsu_packet -- */
 
