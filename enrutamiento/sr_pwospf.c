@@ -289,7 +289,6 @@ void* send_hellos(void* arg)
             if(ifaces->helloint > 0){
                 ifaces->helloint--;
             }
-
             else{
                 struct powspf_hello_lsu_param* hParam = ((powspf_hello_lsu_param_t*)(malloc(sizeof(powspf_hello_lsu_param_t))));
                 hParam->sr = sr;
@@ -586,7 +585,7 @@ void* send_lsu(void* arg)
     /* La IP destino es la del vecino contectado a mi interfaz*/
     ipHeader->ip_dst = lsu_param->interface->neighbor_ip;
     
-
+    printf("LLLEGOOOO 1 \n");
     /* Inicializo cabezal de OSPF*/
     ospfv2_hdr_t* ospfHeader = ((ospfv2_hdr_t*)(malloc(sizeof(ospfv2_hdr_t))));
     ospfv2_lsu_hdr_t* lsuHeader = ((ospfv2_lsu_hdr_t*)(malloc(sizeof(ospfv2_lsu_hdr_t))));
@@ -606,7 +605,7 @@ void* send_lsu(void* arg)
     ospfHeader->aid = 0;
     ospfHeader->autype = 0;
     ospfHeader->audata = 0;
-
+    printf("LLLEGOOOO 2 \n");
     /* Creo el paquete y seteo todos los cabezales del paquete a transmitir */
     uint8_t* packet = malloc(sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t) + sizeof(ospfv2_hdr_t) + sizeof(ospfv2_lsu_hdr_t) + sizeof(ospfv2_lsa_t)*cantRoutes);
     
@@ -617,44 +616,52 @@ void* send_lsu(void* arg)
 
     /* Creo cada LSA iterando en las enttadas de la tabla */
     ospfv2_lsa_t* lsaHeader = ((ospfv2_lsa_t*)(malloc(sizeof(ospfv2_lsa_t))));
-    
+    printf("LLLEGOOOO 3 \n");
     int cantLSA = 0;
     struct sr_rt* table_entry = lsu_param->sr->routing_table;
-    while (table_entry != NULL);
+    printf("LLLEGOOOO 3.1 \n");
+    while (table_entry != NULL)
     {
+        ("LLLEGOOOO 3.2 \n");
         /* Solo envío entradas directamente conectadas y agreagadas a mano*/
         if (table_entry->admin_dst <= 1)
         {
+            ("LLLEGOOOO 3.3 \n");
             /* Creo LSA con subnet, mask y routerID (id del vecino de la interfaz)*/
             lsaHeader->mask = table_entry->mask.s_addr;
             lsaHeader->subnet = table_entry->dest.s_addr;
+            ("LLLEGOOOO 3.4 \n");
             lsaHeader->rid = sr_get_interface(lsu_param->sr,table_entry->interface)->neighbor_id;
+            ("LLLEGOOOO 3.5 \n");
             memcpy(packet + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t) + sizeof(ospfv2_hdr_t) + sizeof(ospfv2_lsu_hdr_t),lsuHeader,sizeof(ospfv2_lsa_t)*cantLSA);
-
+            ("LLLEGOOOO 3.6 \n");
             /*contador para añadir mas LSA al paquete*/
             cantLSA++;
         }
         table_entry = table_entry->next;
     }
-
+    printf("LLLEGOOOO 3.7777 \n");
     /* Calculo el checksum del paquete LSU */
     ((ospfv2_hdr_t*)(packet + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t)))->csum = ospfv2_cksum(packet + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t), sizeof(ospfv2_hdr_t) + sizeof(ospfv2_lsu_hdr_t) + (sizeof(ospfv2_lsa_t)*cantLSA)); /*PUEDE QUE VAYA CANT_ROUTES*/
-
+    printf("LLLEGOOOO 3.7 \n");
     /* Me falta la MAC para poder enviar el paquete, la busco en la cache ARP*/
     struct sr_arpentry *arpEntry = sr_arpcache_lookup(&(lsu_param->sr->cache), lsu_param->interface->neighbor_ip);
     int packet_len = (packet + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t), sizeof(ospfv2_hdr_t) + sizeof(ospfv2_lsu_hdr_t) + (sizeof(ospfv2_lsa_t)*cantLSA));
-
+    printf("LLLEGOOOO 4 \n");
     /* Envío el paquete si obtuve la MAC o lo guardo en la cola para cuando tenga la MAC*/
     if(arpEntry){
         memcpy(ethHeader->ether_dhost, arpEntry->mac, ETHER_ADDR_LEN);
         sr_send_packet(lsu_param->sr, packet,packet_len , lsu_param->interface->name);
+        printf("LLLEGOOOO 5 \n");
         return;
     }
     else{
         struct sr_arpreq *arpReq = sr_arpcache_queuereq(&(lsu_param->sr->cache), ipHeader->ip_dst, packet, packet_len, lsu_param->interface->name);
+        printf("LLLEGOOOO 6 \n");
         if(arpReq != NULL){
             handle_arpreq(lsu_param->sr,arpReq);
         }
+        printf("LLLEGOOOO 7 \n");
         return;
     }
 
