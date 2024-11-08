@@ -375,7 +375,8 @@ void sr_handle_ip_packet(struct sr_instance *sr,
                 }
             }
         } else if (ipHdr->ip_p == ip_protocol_ospfv2){
-            sr_handle_pwospf_packet(sr, packet, len, interface);
+            struct sr_if *inter = sr_get_interface(sr,interface);
+            sr_handle_pwospf_packet(sr, packet, len, inter);
         } else{
             printf("**** -> CARGA TCP o UDP, sending ICMP Port unreachable.\n");
             sr_send_icmp_error_packet(3, 3, sr, ipHdr->ip_src, packet);

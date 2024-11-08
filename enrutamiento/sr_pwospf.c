@@ -240,7 +240,7 @@ void* check_topology_entries_age(void* arg)
         if(check_topology_age(g_topology) == 1){
             dijkstra_param_t* dijkstraParam = ((dijkstra_param_t*)(malloc(sizeof(dijkstra_param_t))));
             dijkstraParam->sr = sr;
-            dijkstraParam->topology;
+            dijkstraParam->topology = g_topology;
             /*CAPAZ FALTA MAS ATRIBUTOS*/
             pthread_create(&g_dijkstra_thread,NULL,run_dijkstra,dijkstraParam);
         }
@@ -718,7 +718,7 @@ void sr_handle_pwospf_hello_packet(struct sr_instance* sr, uint8_t* packet, unsi
     }
 
     /* Chequeo del intervalo de HELLO */
-    if (helloHeader->helloint != htons(OSPF_DEFAULT_HELLOINT))
+    if (helloHeader->helloint != OSPF_DEFAULT_HELLOINT)
     {
         Debug("-> PWOSPF: HELLO Packet dropped, invalid hello interval\n");
         return;
