@@ -109,6 +109,8 @@ int is_packet_valid(uint8_t *packet /* lent */,
 
           if (len >= cumulative_sz) {
             printf("****** -> Packet length is correct.\n");
+            print_hdr_ospf(ospfHdr);
+            printf("El valor del cksum es: %d\n", ospfv2_cksum(ospfHdr, len - ospfOffset));
             if (ospfv2_cksum(ospfHdr, len - ospfOffset) == ospfHdr->csum) {
               printf("****** -> OSPF packet checksum is correct.\n");
               return 1;
