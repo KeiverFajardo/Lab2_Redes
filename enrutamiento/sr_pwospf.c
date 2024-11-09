@@ -247,7 +247,7 @@ void* check_topology_entries_age(void* arg)
             dijkstra_param_t* dijkstraParam = ((dijkstra_param_t*)(malloc(sizeof(dijkstra_param_t))));
             dijkstraParam->sr = sr;
             dijkstraParam->topology = g_topology;
-            dijkstraParam->rid = g_router_id.s_addr; /* OJOOOOOOOOO CAPAZ EL ATRIBUTO QUE FALTABA SETEAR ES EL RID PARA PODER INSERTAR BIEN AL EJECUTAR run_dijkstra se ejcuta createTopologyEntry y SE NECESITA*/
+            dijkstraParam->rid = g_router_id; /* OJOOOOOOOOO CAPAZ EL ATRIBUTO QUE FALTABA SETEAR ES EL RID PARA PODER INSERTAR BIEN AL EJECUTAR run_dijkstra se ejcuta createTopologyEntry y SE NECESITA*/
             /*CAPAZ FALTA MAS ATRIBUTOS*/
 
             /* OJOOOOOOOOO Imprimir la topología resultado del chequeo. */
@@ -532,7 +532,8 @@ void* send_all_lsu(void* arg)
             /* Si la interfaz tiene un vecino, envío un LSU */
             if(ifaces->neighbor_ip != 0){
                 /* Ehternet Source address OJOOOOOOOOOOOOOOOOOO FALTABA EL ETHER_SHOST*/
-                for (int i = 0; i < ETHER_ADDR_LEN; i++)
+                int i;
+                for (i = 0; i < ETHER_ADDR_LEN; i++)
                 {
                     ethHeader->ether_shost[i] = ((uint8_t)(ifaces->addr[i]));
                 }
@@ -571,7 +572,8 @@ void* send_all_lsu(void* arg)
                 /* Envío el paquete si obtuve la MAC o lo guardo en la cola para cuando tenga la MAC*/
                 if(arpEntry){
                     /*OJOOOOOO PUEDE SER QUE HAY QUE ELIMINAR Y NO HACER UN FOR POR CADA i Y ASIGNAR UNA SOLA VEZ*/
-                    for (int i = 0; i < ETHER_ADDR_LEN; i++)
+                    int i;
+                    for (i = 0; i < ETHER_ADDR_LEN; i++)
                     {
                         memcpy(ethHeader->ether_dhost[i], arpEntry->mac, ETHER_ADDR_LEN);
                     }
@@ -794,7 +796,7 @@ void sr_handle_pwospf_hello_packet(struct sr_instance* sr, uint8_t* packet, unsi
 
     Debug("-> PWOSPF: Detecting PWOSPF HELLO Packet from:\n");
     Debug("      [Neighbor ID = %s]\n", inet_ntoa(neighbor_id));
-    Debug("      [Neighbor IP = %s]\n", inet_ntoa(ipHeader->ip_src));
+    /*Debug("      [Neighbor IP = %s]\n", inet_ntoa(ipHeader->ip_src));*/
     Debug("      [Network Mask = %s]\n", inet_ntoa(net_mask));
 
     /* Chequeo checksum */
@@ -806,7 +808,7 @@ void sr_handle_pwospf_hello_packet(struct sr_instance* sr, uint8_t* packet, unsi
         Debug("-> PWOSPF: HELLO Packet dropped, invalid checksum\n");
         return;
     }
-    ospfv2Header->csum = comingCsum;
+    ospfv2Header->csum = newCsum;
     
     /* Chequeo de la máscara de red */
     if (helloHeader->nmask != rx_if->mask)
