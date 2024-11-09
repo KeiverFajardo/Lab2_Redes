@@ -399,7 +399,6 @@ void* send_hello_packet(void* arg)
     ospfHeader->autype = 0;
     ospfHeader->audata = 0;
     
-    /* OJOOOOOOOOO FALTABAN ATRIBTOS ACAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA*/
     /*Seteo el packet len*/
     ospfHeader->len = htons(sizeof(ospfv2_hdr_t) + sizeof(ospfv2_hello_hdr_t));
     /* Calculo y seteo el checksum ospf*/
@@ -410,7 +409,7 @@ void* send_hello_packet(void* arg)
     /* Seteo máscara con la máscara de mi interfaz de salida */
     ospfHelloHeader->nmask = hello_param->interface->mask;
     /* Seteo Hello Interval con OSPF_DEFAULT_HELLOINT */
-    ospfHelloHeader->helloint = htons(OSPF_DEFAULT_HELLOINT); /*OJOOOOOOOOO Agregue el HTONS PARA PROBAR SI ES CON EL HTONS O NO!!!!!!!!!!!!!!!!!!!!!!*/
+    ospfHelloHeader->helloint = htons(OSPF_DEFAULT_HELLOINT);
     /* Seteo Padding en 0*/
     ospfHelloHeader->padding = 0;
 
@@ -424,14 +423,10 @@ void* send_hello_packet(void* arg)
     memcpy(packet + sizeof(sr_ethernet_hdr_t), ipHeader, sizeof(sr_ip_hdr_t));
     memcpy(packet + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t), ospfHeader, sizeof(ospfv2_hdr_t));
     memcpy(packet + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t) + sizeof(ospfv2_hdr_t), ospfHelloHeader, sizeof(ospfv2_hello_hdr_t));
-   
-    /* OJOOOOOOOOO que no se puede calcular el checksum despues de hacer la copia ya que no queda bien el dato el checksum lo hice en la linea 408 para probar*/
-    /* Calculo y actualizo el checksum del cabezal OSPF */
-    /*((ospfv2_hdr_t*)(packet + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t)))->csum = ospfv2_cksum(packet + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t), sizeof(ospfv2_hdr_t) + sizeof(ospfv2_hello_hdr_t));*/
-   
-    
+
+    printf("El valor del tamaño a mandar es: %d\n", sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t) + sizeof(ospfv2_hdr_t) + sizeof(ospfv2_hello_hdr_t));
     sr_send_packet(hello_param->sr, packet, sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t) + sizeof(ospfv2_hdr_t) + sizeof(ospfv2_hello_hdr_t), hello_param->interface->name);
-   
+
     /* Imprimo información del paquete HELLO enviado */
     print_hdr_ospf(packet + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t));
 
