@@ -413,7 +413,6 @@ void* send_hello_packet(void* arg)
     ospfHelloHeader->padding = 0;
 
     /* Envío el paquete HELLO */
-    ospfHeader->csum = ospfv2_cksum(ospfHeader, sizeof(ospfv2_hdr_t) + sizeof(ospfv2_hello_hdr_t));
     printf("El valor del cksum A ENVIAR es: %d\n", ospfHeader->csum);
     
     /* Creo el paquete a transmitir */
@@ -422,6 +421,8 @@ void* send_hello_packet(void* arg)
     memcpy(packet + sizeof(sr_ethernet_hdr_t), ipHeader, sizeof(sr_ip_hdr_t));
     memcpy(packet + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t), ospfHeader, sizeof(ospfv2_hdr_t));
     memcpy(packet + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t) + sizeof(ospfv2_hdr_t), ospfHelloHeader, sizeof(ospfv2_hello_hdr_t));
+
+    ((ospfv2_hdr_t*)(packet + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t)))->csum = ospfv2_cksum(packet + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t) , sizeof(ospfv2_hdr_t) + sizeof(ospfv2_hello_hdr_t));
 
     printf("El valor del tamaño a mandar es: %d\n", sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t) + sizeof(ospfv2_hdr_t) + sizeof(ospfv2_hello_hdr_t));
     sr_send_packet(hello_param->sr, packet, sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t) + sizeof(ospfv2_hdr_t) + sizeof(ospfv2_hello_hdr_t), hello_param->interface->name);
@@ -739,6 +740,7 @@ void* send_lsu(void* arg)
         memcpy(packet + sizeof(sr_ethernet_hdr_t), ipHeader, sizeof(sr_ip_hdr_t));
         memcpy(packet + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t), ospfHeader, sizeof(ospfv2_hdr_t));
         memcpy(packet + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t) + sizeof(ospfv2_hdr_t), lsuHeader, sizeof(ospfv2_lsu_hdr_t));
+        printf("SADADASDADSAS\n"); 
         sr_send_packet(lsu_param->sr, packet, packet_len , lsu_param->interface->name);
         printf("LLLEGOOOO 5 \n");
         return;
@@ -748,9 +750,11 @@ void* send_lsu(void* arg)
         memcpy(packet + sizeof(sr_ethernet_hdr_t), ipHeader, sizeof(sr_ip_hdr_t));
         memcpy(packet + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t), ospfHeader, sizeof(ospfv2_hdr_t));
         memcpy(packet + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t) + sizeof(ospfv2_hdr_t), lsuHeader, sizeof(ospfv2_lsu_hdr_t));
+        printf("HOLA----------\n");
         struct sr_arpreq *arpReq = sr_arpcache_queuereq(&(lsu_param->sr->cache), ipHeader->ip_dst, packet, packet_len, lsu_param->interface->name);
-
+        printf("CHAU----------\n");
         if(arpReq != NULL){
+            printf("HOLAAAAAA\n");
             handle_arpreq(lsu_param->sr,arpReq);
         }
 
