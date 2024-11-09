@@ -371,7 +371,7 @@ void* send_hello_packet(void* arg)
     sr_ip_hdr_t* ipHeader = ((sr_ip_hdr_t*)(malloc(sizeof(sr_ip_hdr_t))));
 
     ipHeader->ip_v = 4;  /* Versión IP (IPv4) */
-    ipHeader->ip_hl = sizeof(sr_ip_hdr_t) / 4;  /* Longitud del encabezado IP */ /*OJOOOOOOOOO Puede SER el valor 5*/
+    ipHeader->ip_hl = 5;  /* Longitud del encabezado IP */ /*OJOOOOOOOOO Puede SER el valor 5*/
     ipHeader->ip_tos = 0;  /* Tipo de servicio */
     ipHeader->ip_len = htons(sizeof(sr_ip_hdr_t) + sizeof(ospfv2_hdr_t) + sizeof(ospfv2_hello_hdr_t));  /* Longitud total del paquete IP */
     ipHeader->ip_id = id; 
@@ -399,9 +399,8 @@ void* send_hello_packet(void* arg)
     ospfHeader->autype = 0;
     ospfHeader->audata = 0;
     
-    /*Seteo el packet len*/
+    
     ospfHeader->len = htons(sizeof(ospfv2_hdr_t) + sizeof(ospfv2_hello_hdr_t));
-    /* Calculo y seteo el checksum ospf*/
     ospfHeader->csum = 0;
 
     ospfv2_hello_hdr_t* ospfHelloHeader = ((ospfv2_hello_hdr_t*)(malloc(sizeof(ospfv2_hello_hdr_t))));
@@ -485,7 +484,7 @@ void* send_all_lsu(void* arg)
 
         ipHeader->ip_id =id;
         ipHeader->ip_v = 4;  /* Versión IP (IPv4) */
-        ipHeader->ip_hl = sizeof(sr_ip_hdr_t) / 4;  /* Longitud del encabezado IP */ /* OJOOOOOOOOOO PODRIA SER EL VALOR 5*/
+        ipHeader->ip_hl = 5;  /* Longitud del encabezado IP */ /* OJOOOOOOOOOO PODRIA SER EL VALOR 5*/
         ipHeader->ip_tos = 0;  /* Tipo de servicio */
         ipHeader->ip_len = htons(sizeof(sr_ip_hdr_t) + sizeof(ospfv2_hdr_t) + sizeof(ospfv2_lsu_hdr_t) + (sizeof(ospfv2_lsa_t) * cantRoutes));  /* Longitud total del paquete IP */
         ipHeader->ip_off = 0;  /* Bandera "Don't Fragment" */
@@ -654,7 +653,7 @@ void* send_lsu(void* arg)
     int id = (int)((tv.tv_sec * 1000 + tv.tv_usec / 1000) % 2147483647);
     ipHeader->ip_id =id;
     ipHeader->ip_v = 4;  /* Versión IP (IPv4) */
-    ipHeader->ip_hl = sizeof(sr_ip_hdr_t) / 4;  /* Longitud del encabezado IP */ /*PUEDE SER EL VALOR 5*/
+    ipHeader->ip_hl = 5;  /* Longitud del encabezado IP */ /*PUEDE SER EL VALOR 5*/
     ipHeader->ip_tos = 0;  /* Tipo de servicio */
     ipHeader->ip_len = htons(sizeof(sr_ip_hdr_t) + sizeof(ospfv2_hdr_t) + sizeof(ospfv2_lsu_hdr_t) + (sizeof(ospfv2_lsa_t) * cantRoutes));  /* Longitud total del paquete IP */
     ipHeader->ip_off = 0;  /* Bandera "Don't Fragment" */
@@ -806,6 +805,8 @@ void sr_handle_pwospf_hello_packet(struct sr_instance* sr, uint8_t* packet, unsi
     uint16_t comingCsum = ospfv2Header->csum;
     ospfv2Header->csum = 0;
     uint16_t newCsum = ospfv2_cksum(packet + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t), sizeof(ospfv2_hdr_t) + sizeof(ospfv2_hello_hdr_t));
+    printf("El valor del newSum es: %d\n", newCsum);
+    printf("El valor del comingSum es: %d\n", comingCsum);
     if (comingCsum != newCsum)
     {
         Debug("-> PWOSPF: HELLO Packet dropped, invalid checksum\n");
