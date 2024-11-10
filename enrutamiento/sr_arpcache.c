@@ -152,14 +152,12 @@ struct sr_arpreq *sr_arpcache_queuereq(struct sr_arpcache *cache,
                                        char *iface)
 {
     pthread_mutex_lock(&(cache->lock));
-    printf("111111111\n");   
     struct sr_arpreq *req;
     for (req = cache->requests; req != NULL; req = req->next) {
         if (req->ip == ip) {
             break;
         }
     }
-    printf("22222222\n");
     /* If the IP wasn't found, add it */
     if (!req) {
         req = (struct sr_arpreq *) calloc(1, sizeof(struct sr_arpreq));
@@ -167,18 +165,12 @@ struct sr_arpreq *sr_arpcache_queuereq(struct sr_arpcache *cache,
         req->next = cache->requests;
         cache->requests = req;
     }
-    printf("3333333\n");
     /* Add the packet to the list of packets for this request */
     if (packet && packet_len && iface) {
-        printf("444444444\n");
         struct sr_packet *new_pkt = (struct sr_packet *)malloc(sizeof(struct sr_packet));
-        printf("6666666666\n");
         new_pkt->buf = (uint8_t *)malloc(packet_len);
-        printf("5555555555\n");
         memcpy(new_pkt->buf, packet, packet_len);
-        printf("77777777\n");
         new_pkt->len = packet_len;
-        printf("8888888\n");
 		new_pkt->iface = (char *)malloc(sr_IFACE_NAMELEN);
         strncpy(new_pkt->iface, iface, sr_IFACE_NAMELEN);
         new_pkt->next = req->packets;
