@@ -185,7 +185,7 @@ void* pwospf_run_thread(void* arg)
 
     pthread_create(&g_hello_packet_thread, NULL, send_hellos, sr);
     pthread_create(&g_all_lsu_thread, NULL, send_all_lsu, sr);
-     pthread_create(&g_neighbors_thread, NULL, check_neighbors_life, sr);
+    pthread_create(&g_neighbors_thread, NULL, check_neighbors_life, sr);
     pthread_create(&g_topology_entries_thread, NULL, check_topology_entries_age, sr);
 
     return NULL;
@@ -216,8 +216,26 @@ void* check_neighbors_life(void* arg)
     struct sr_instance* sr = (struct sr_instance*)arg;
 
     while(1){
+
         sleep(1);
-        check_neighbors_alive(g_neighbors);
+
+        struct ospfv2_neighbor* updated_neighbor = check_neighbors_alive(g_neighbors);
+
+        while (updated_neighbor != NULL) {
+            struct sr_if* iface = sr->if_list;
+
+            while (iface != NULL) {
+                if (iface->neighbor_id == updated_neighbor->neighbor_id.s_addr) {
+                    printf("Actualizando el ID del vecino en la interfaz: %s\n", iface->name);
+                    iface->neighbor_id = 0;  
+                    iface->neighbor_ip = 0;
+                    break;
+                }
+                iface = iface->next;
+            }
+            /* Pasa al siguiente vecino en la lista */
+            updated_neighbor = updated_neighbor->next;
+        }
     };
     
     printf("----------------\n");
@@ -364,19 +382,15 @@ void* send_hello_packet(void* arg)
     sr_ip_hdr_t* ipHeader = ((sr_ip_hdr_t*)(malloc(sizeof(sr_ip_hdr_t))));
 
     ipHeader->ip_v = 4;  /* Versión IP (IPv4) */
-    ipHeader->ip_hl = 5;  /* Longitud del encabezado IP */ /*OJOOOOOOOOO Puede SER el valor 5*/
+    ipHeader->ip_hl = 5;  /* Longitud del encabezado IP */ 
     ipHeader->ip_tos = 0;  /* Tipo de servicio */
     ipHeader->ip_len = htons(sizeof(sr_ip_hdr_t) + sizeof(ospfv2_hdr_t) + sizeof(ospfv2_hello_hdr_t));  /* Longitud total del paquete IP */
     ipHeader->ip_id = id; 
     ipHeader->ip_off = 0;  /* Bandera "Don't Fragment" */
     ipHeader->ip_ttl = 64;  /* Time to Live */
-    /* Seteo el protocolo en el cabezal IP para ser el de OSPF (89) */
     ipHeader->ip_p = ip_protocol_ospfv2;
-    /* Seteo IP origen con la IP de mi interfaz de salida */
     ipHeader->ip_src = hello_param->interface->ip;
-    /* Seteo IP destino con la IP de Multicast dada: OSPF_AllSPFRouters  */
     ipHeader->ip_dst = htonl(OSPF_AllSPFRouters);
-    /* Calculo y seteo el checksum IP*/
     ipHeader->ip_sum = 0;
     ipHeader->ip_sum =  ip_cksum(ipHeader, sizeof(sr_ip_hdr_t));
 
@@ -414,12 +428,11 @@ void* send_hello_packet(void* arg)
     memcpy(packet + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t) + sizeof(ospfv2_hdr_t), ospfHelloHeader, sizeof(ospfv2_hello_hdr_t));
 
     ((ospfv2_hdr_t*)(packet + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t)))->csum = ospfv2_cksum(packet + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t) , sizeof(ospfv2_hdr_t) + sizeof(ospfv2_hello_hdr_t));
-    printf("El valor del cksum A ENVIAR es: %d\n", ((ospfv2_hdr_t*)(packet + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t)))->csum);
     sr_send_packet(hello_param->sr, packet, sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t) + sizeof(ospfv2_hdr_t) + sizeof(ospfv2_hello_hdr_t), hello_param->interface->name);
 
     Debug("-> PWOSPF: Sending HELLO Packet of length = %lu, out of the interface: %s\n", sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t) + sizeof(ospfv2_hdr_t) + sizeof(ospfv2_hello_hdr_t), hello_param->interface->name);
     Debug("      [Router ID = %s]\n", inet_ntoa(g_router_id));
-    /* Debug("      [Router IP = %s]\n", inet_ntoa(ip));
+    /*Debug("      [Router IP = %s]\n", inet_ntoa(ip));
     Debug("      [Network Mask = %s]\n", inet_ntoa(mask)); */
 
     printf("----------------\n");
@@ -453,9 +466,11 @@ void* send_all_lsu(void* arg)
         /* Bloqueo para evitar mezclar el envío de HELLOs y LSUs */
         pwospf_lock(sr->ospf_subsys);
 
-        /*Creo el paquete LSU*/
-        int cantRoutes = count_routes(sr);
         
+        int cantRoutes = count_routes(sr);
+        uint8_t* packet = ((uint8_t*)(malloc(sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t) + sizeof(ospfv2_hdr_t) + sizeof(ospfv2_lsu_hdr_t) + (sizeof(ospfv2_lsa_t) * cantRoutes))));
+
+        /*Creo el paquete LSU*/
         sr_ethernet_hdr_t* ethHeader = ((sr_ethernet_hdr_t*)(malloc(sizeof(sr_ethernet_hdr_t))));
     
         /*Seteando header ethernet*/
@@ -502,73 +517,63 @@ void* send_all_lsu(void* arg)
         lsuHeader->ttl = 64;
         lsuHeader->num_adv = htonl(cantRoutes);
 
-        uint8_t* packet = ((uint8_t*)(malloc(sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t) + sizeof(ospfv2_hdr_t) + sizeof(ospfv2_lsu_hdr_t) + (sizeof(ospfv2_lsa_t) * cantRoutes))));
 
+        int cantLSA = 0;
+        struct sr_rt* table_entry = sr->routing_table;
+        while (table_entry != NULL);
+        {
+            /* Solo envío entradas directamente conectadas y agreagadas a mano*/
+            if (table_entry->admin_dst <= 1)
+            {
+                /* Creo LSA con subnet, mask y routerID (id del vecino de la interfaz)*/
+                lsaHeader->mask = table_entry->mask.s_addr;
+                lsaHeader->subnet = table_entry->dest.s_addr;
+                lsaHeader->rid = sr_get_interface(sr,table_entry->interface)->neighbor_id;
+                memcpy(packet + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t) + sizeof(ospfv2_hdr_t) + sizeof(ospfv2_lsu_hdr_t) + (sizeof(ospfv2_lsa_t) * cantLSA), lsaHeader, sizeof(ospfv2_lsa_t));
+                /*contador para añadir mas LSA al paquete*/
+                cantLSA++;
+            }
+            table_entry = table_entry->next;
+        }
 
         /* Recorro todas las interfaces para enviar el paquete LSU */
         struct sr_if* ifaces = sr->if_list;
-        int cantLSA = 0;
         while(ifaces != NULL){
             
             /* Si la interfaz tiene un vecino, envío un LSU */
             if(ifaces->neighbor_ip != 0){
-                /* Ehternet Source address OJOOOOOOOOOOOOOOOOOO FALTABA EL ETHER_SHOST*/
                 int i;
                 for (i = 0; i < ETHER_ADDR_LEN; i++)
                 {
                     ethHeader->ether_shost[i] = ((uint8_t)(ifaces->addr[i]));
                 }
-
                 ipHeader->ip_src = ifaces->ip;
                 ipHeader->ip_dst = ifaces->neighbor_ip;
-                /* OJOOOOOOOOO faltaba el checksum */
                 ipHeader->ip_sum = ip_cksum(ipHeader, sizeof(sr_ip_hdr_t));
 
-                struct sr_rt* table_entry = sr->routing_table;
-                while (table_entry != NULL);
-                {
-                    /* Solo envío entradas directamente conectadas y agreagadas a mano*/
-                    if (table_entry->admin_dst <= 1)
-                    {
-                        /* Creo LSA con subnet, mask y routerID (id del vecino de la interfaz)*/
-                        lsaHeader->mask = table_entry->mask.s_addr;
-                        lsaHeader->subnet = table_entry->dest.s_addr;
-                        lsaHeader->rid = sr_get_interface(sr,table_entry->interface)->neighbor_id;
-                        /*OJOOOOOOOO ESTABA MAL LA SIGUIENTE LINEA*/
-                        /*memcpy(packet + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t) + sizeof(ospfv2_hdr_t) + sizeof(ospfv2_lsu_hdr_t),lsuHeader,sizeof(ospfv2_lsa_t)*cantLSA);*/
-                        memcpy(packet + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t) + sizeof(ospfv2_hdr_t) + sizeof(ospfv2_lsu_hdr_t) + (sizeof(ospfv2_lsa_t) * cantLSA), lsaHeader, sizeof(ospfv2_lsa_t));
-                        /*contador para añadir mas LSA al paquete*/
-                        cantLSA++;
-                    }
-                    table_entry = table_entry->next;
-                }
-
                 /* OJOOOOOOO arregle esta linea Calculo el checksum del paquete LSU */
-                ospfHeader->csum = ospfv2_cksum(ospfHeader, sizeof(ospfv2_hdr_t) + sizeof(ospfv2_lsu_hdr_t) + (sizeof(ospfv2_lsa_t) * cantRoutes));  /*OJOOOOOOOOOOOOOOOOOO Cambiar cantLSA por cantRoutes si corresponde*/
+                ospfHeader->csum = ospfv2_cksum(ospfHeader, sizeof(ospfv2_hdr_t) + sizeof(ospfv2_lsu_hdr_t) + (sizeof(ospfv2_lsa_t) * cantRoutes));
 
                 /* Me falta la MAC para poder enviar el paquete, la busco en la cache ARP*/
                 struct sr_arpentry *arpEntry = sr_arpcache_lookup(&(sr->cache), ifaces->neighbor_ip);
+                
                 int packet_len = (sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t) + sizeof(ospfv2_hdr_t) + sizeof(ospfv2_lsu_hdr_t) + (sizeof(ospfv2_lsa_t) * cantLSA)); /*OJOOOOO CORREGI QUE NO SUMABA BIEN*/
 
+                memcpy(packet, ethHeader, sizeof(sr_ethernet_hdr_t));
+                memcpy(packet + sizeof(sr_ethernet_hdr_t), ipHeader, sizeof(sr_ip_hdr_t));
+                memcpy(packet + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t), ospfHeader, sizeof(ospfv2_hdr_t));
+                memcpy(packet + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t) + sizeof(ospfv2_hdr_t), lsuHeader, sizeof(ospfv2_lsu_hdr_t));
+
                 /* Envío el paquete si obtuve la MAC o lo guardo en la cola para cuando tenga la MAC*/
-                
                 if(arpEntry){
                     int i;
                     for (i = 0; i < ETHER_ADDR_LEN; i++)
                     {
-                        ethHeader->ether_dhost[i] = arpEntry->mac[i]; /*OJOOOOOOO*/
+                        ethHeader->ether_dhost[i] = arpEntry->mac[i]; 
                     }
-                    memcpy(packet, ethHeader, sizeof(sr_ethernet_hdr_t));
-                    memcpy(packet + sizeof(sr_ethernet_hdr_t), ipHeader, sizeof(sr_ip_hdr_t));
-                    memcpy(packet + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t), ospfHeader, sizeof(ospfv2_hdr_t));
-                    memcpy(packet + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t) + sizeof(ospfv2_hdr_t), lsuHeader, sizeof(ospfv2_lsu_hdr_t));
                     sr_send_packet(sr, packet, packet_len , ifaces->name);
                 }
                 else{
-                    memcpy(packet, ethHeader, sizeof(sr_ethernet_hdr_t));
-                    memcpy(packet + sizeof(sr_ethernet_hdr_t), ipHeader, sizeof(sr_ip_hdr_t));
-                    memcpy(packet + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t), ospfHeader, sizeof(ospfv2_hdr_t));
-                    memcpy(packet + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t) + sizeof(ospfv2_hdr_t), lsuHeader, sizeof(ospfv2_lsu_hdr_t));
                     struct sr_arpreq *arpReq = sr_arpcache_queuereq(&(sr->cache), ipHeader->ip_dst, packet, packet_len, ifaces->name);
                     if(arpReq != NULL){
                         handle_arpreq(sr,arpReq);
@@ -578,15 +583,12 @@ void* send_all_lsu(void* arg)
             ifaces = ifaces->next;
         }
 
-        /* OJOOOOOOO REVISAR CAPAZ FALTA LIBERAR LA MEMORIA DEL PAQUETE */
-        /* 
             free(packet);
             free(lsaHeader);
             free(lsuHeader);
             free(ospfHeader);
             free(ipHeader);
             free(ospfHeader); 
-        */
 
         /* Desbloqueo */
         pwospf_unlock(sr->ospf_subsys);
@@ -612,26 +614,20 @@ void* send_lsu(void* arg)
     /* Construyo el LSU */
     Debug("\n\nPWOSPF: Constructing LSU packet\n");
 
-    /* Me falta la MAC para poder enviar el paquete, la busco en la cache ARP*/
-    /* Envío el paquete si obtuve la MAC o lo guardo en la cola para cuando tenga la MAC*/
-   
-   /* Libero memoria */
-
-
     /* Solo envío LSUs si del otro lado hay un router*/
     if (lsu_param->interface->neighbor_ip == 0)
     {
         return NULL;
     }
-
-    /* Constructing LSU */
-    Debug("\n\nPWOSPF: Constructing LSU packet\n");
     /* Inicializo cabezal Ethernet */
     /* Dirección MAC destino la dejo para el final ya que hay que hacer ARP */
     sr_ethernet_hdr_t* tx_e_hdr = ((sr_ethernet_hdr_t*)(malloc(sizeof(sr_ethernet_hdr_t))));
 
     tx_e_hdr->ether_type = htons(ethertype_ip);
-    memcpy(tx_e_hdr->ether_shost,lsu_param->interface->addr,ETHER_ADDR_LEN);        
+    int i;
+    for(i=0; i<ETHER_ADDR_LEN; i++){
+        tx_e_hdr->ether_shost[i] = ((uint8_t)(lsu_param->interface->addr[i]));
+    } 
 
     int routes_num = count_routes(lsu_param->sr);
 
@@ -666,7 +662,7 @@ void* send_lsu(void* arg)
     tx_ospf_hdr->type = OSPF_TYPE_LSU;
     tx_ospf_hdr->len = htons(sizeof(ospfv2_hdr_t) + sizeof(ospfv2_lsu_hdr_t) + (sizeof(ospfv2_lsa_t) * routes_num));
     tx_ospf_hdr->rid = g_router_id.s_addr;    
-    tx_ospf_hdr->aid = htonl(171); 
+    tx_ospf_hdr->aid = 0; 
     tx_ospf_hdr->csum = 0;
     tx_ospf_hdr->autype = 0;
     tx_ospf_hdr->audata = 0;
@@ -688,7 +684,6 @@ void* send_lsu(void* arg)
     /* Creo el paquete y seteo todos los cabezales del paquete a transmitir */
     tx_packet = ((uint8_t*)(malloc(packet_len)));
 
-    memcpy(tx_packet, tx_e_hdr, sizeof(sr_ethernet_hdr_t));
     memcpy(tx_packet + sizeof(sr_ethernet_hdr_t), tx_ip_hdr, sizeof(sr_ip_hdr_t));
     memcpy(tx_packet + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t), tx_ospf_hdr, sizeof(ospfv2_hdr_t));
     memcpy(tx_packet + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t) + sizeof(ospfv2_hdr_t), tx_ospf_lsu_hdr, sizeof(ospfv2_lsu_hdr_t));
@@ -717,15 +712,21 @@ void* send_lsu(void* arg)
         ospfv2_cksum((ospfv2_hdr_t*)(tx_packet + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t)), 
                      sizeof(ospfv2_hdr_t) + sizeof(ospfv2_lsu_hdr_t) + (sizeof(ospfv2_lsa_t) * routes_num));
 
-     struct sr_arpentry *arpEntry = sr_arpcache_lookup(&(lsu_param->sr->cache), lsu_param->interface->neighbor_ip);
+    struct sr_arpentry *arpEntry = sr_arpcache_lookup(&(lsu_param->sr->cache), lsu_param->interface->neighbor_ip);
     
     /* Envío el paquete si obtuve la MAC o lo guardo en la cola para cuando tenga la MAC*/
     Debug("-> PWOSPF: Sending LSU Packet of length = %d, out of the interface: %s\n", packet_len, lsu_param->interface->name);
     if(arpEntry){
-        memcpy(((sr_ethernet_hdr_t*)tx_packet)->ether_dhost, arpEntry->mac, ETHER_ADDR_LEN);
+        
+        int l;
+        for(l=0; l<ETHER_ADDR_LEN; l++){
+            tx_e_hdr->ether_dhost[i] = arpEntry->mac[i];
+        }
+        memcpy(tx_packet, tx_e_hdr, sizeof(sr_ethernet_hdr_t));
         sr_send_packet(lsu_param->sr, tx_packet, packet_len , lsu_param->interface->name);
     }
     else{
+        memcpy(tx_packet, tx_e_hdr, sizeof(sr_ethernet_hdr_t));
         struct sr_arpreq *arpReq = sr_arpcache_queuereq(&(lsu_param->sr->cache), tx_ip_hdr->ip_dst, tx_packet, packet_len, lsu_param->interface->name);
         if(arpReq != NULL){
             handle_arpreq(lsu_param->sr,arpReq);
@@ -734,95 +735,6 @@ void* send_lsu(void* arg)
 
 
     free(tx_packet);
-
-/*
-    Debug("\n\nPWOSPF: Constructing LSU update\n");
-
-
-    packet_len = sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t) + sizeof(ospfv2_hdr_t) + sizeof(ospfv2_lsu_hdr_t) + sizeof(ospfv2_lsa_t);
-    tx_packet = ((uint8_t*)(malloc(packet_len)));
-
-    tx_ospf_lsa->subnet = lsu_param->interface->ip & htonl(0xfffffffe);
-
-    tx_ospf_lsa->mask = htonl(0xfffffffe);
-
-
-    tx_ospf_lsa->rid = sr_get_interface(lsu_param->sr, lsu_param->interface->name)->neighbor_id;
-
-
-    struct sr_if* temp_int = lsu_param->sr->if_list;
-    while (temp_int != NULL)
-    {
-        if ((strcmp(temp_int->name, lsu_param->interface->name) != 0))
-        {
-            int i;
-            for (i = 0; i < ETHER_ADDR_LEN; i++)
-            {
-                tx_e_hdr->ether_shost[i] = ((uint8_t)(temp_int->addr[i]));
-            }
-
-            
-
-            tx_ip_hdr->ip_len = htons(sizeof(sr_ip_hdr_t) + sizeof(ospfv2_hdr_t) + sizeof(ospfv2_lsu_hdr_t) + sizeof(ospfv2_lsa_t));
-
-
-            struct timeval tv;
-            gettimeofday(&tv, NULL);
-            srand(tv.tv_sec * tv.tv_usec);
-            tx_ip_hdr->ip_id = rand();
-    
-            tx_ip_hdr->ip_sum = 0;
-
-
-            tx_ip_hdr->ip_src = temp_int->ip;
-
-
-            tx_ip_hdr->ip_sum = ip_cksum(((uint8_t*)(tx_ip_hdr)), sizeof(sr_ip_hdr_t));
-
-
-            tx_ospf_hdr->len = htons(sizeof(ospfv2_hdr_t) + sizeof(ospfv2_lsu_hdr_t) + sizeof(ospfv2_lsa_t));
-
-
-            tx_ospf_hdr->csum = 0;
-
-
-
-            g_sequence_num++;
-            tx_ospf_lsu_hdr->seq = htons(g_sequence_num);
-
-
-            tx_ospf_lsu_hdr->num_adv = htonl(1);
-
-
-            memcpy(tx_packet, tx_e_hdr, sizeof(sr_ethernet_hdr_t));
-            memcpy(tx_packet + sizeof(sr_ethernet_hdr_t), tx_ip_hdr, sizeof(sr_ip_hdr_t));
-            memcpy(tx_packet + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t), tx_ospf_hdr, sizeof(ospfv2_hdr_t));
-            memcpy(tx_packet + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t) + sizeof(ospfv2_hdr_t), tx_ospf_lsu_hdr, sizeof(ospfv2_lsu_hdr_t));
-            memcpy(tx_packet + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t) + sizeof(ospfv2_hdr_t) + sizeof(ospfv2_lsu_hdr_t), tx_ospf_lsa, sizeof(ospfv2_lsa_t));
-
-
-            ((ospfv2_hdr_t*)(tx_packet + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t)))->csum =
-                ospfv2_cksum(tx_packet + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t), sizeof(ospfv2_hdr_t) + sizeof(ospfv2_lsu_hdr_t) + sizeof(ospfv2_lsa_t));
-
-            Debug("-> PWOSPF: Sending LSU Update of length = %d, out of the interface: %s\n", packet_len, temp_int->name);
-            sr_send_packet(lsu_param->sr, ((uint8_t*)(tx_packet)), packet_len, temp_int->name);
-        }
-
-        temp_int = temp_int->next;
-    }
-
-    free(tx_packet);
-    free(tx_ospf_lsa);
-    free(tx_ospf_lsu_hdr);
-    free(tx_ospf_hdr);
-    free(tx_ip_hdr);
-    free(tx_e_hdr);
-
-    
-    printf("----------------\n");
-    printf("FIN FUNC. SEND LSU\n");
-    printf("----------------\n");
-*/
 
     return NULL;
 } 
@@ -850,15 +762,21 @@ void sr_handle_pwospf_hello_packet(struct sr_instance* sr, uint8_t* packet, unsi
     ospfv2_hdr_t* ospfv2Header = ((ospfv2_hdr_t*)(packet + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t)));
     ospfv2_hello_hdr_t* helloHeader = ((ospfv2_hello_hdr_t*)(packet + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t) + sizeof(ospfv2_hdr_t)));
 
-
+    /*ID vecino*/
     struct in_addr neighbor_id;
     neighbor_id.s_addr = ospfv2Header->rid;
+
+    /*IP vecino*/
+    struct in_addr neighbor_ip; 
+    neighbor_ip.s_addr = ipHeader->ip_src;
+
+    /*MASK*/
     struct in_addr net_mask;
     net_mask.s_addr = helloHeader->nmask;
 
     Debug("-> PWOSPF: Detecting PWOSPF HELLO Packet from:\n");
     Debug("      [Neighbor ID = %s]\n", inet_ntoa(neighbor_id));
-    /*Debug("      [Neighbor IP = %s]\n", inet_ntoa(ipHeader->ip_src));*/
+    Debug("      [Neighbor IP = %s]\n", inet_ntoa(neighbor_ip));
     Debug("      [Network Mask = %s]\n", inet_ntoa(net_mask));
 
     /* Chequeo checksum */
@@ -880,13 +798,12 @@ void sr_handle_pwospf_hello_packet(struct sr_instance* sr, uint8_t* packet, unsi
     }
 
     /* Chequeo del intervalo de HELLO */
-    if (helloHeader->helloint != htons(OSPF_DEFAULT_HELLOINT)) /*OJOOOOO agregue el htons*/
+    if (helloHeader->helloint != htons(OSPF_DEFAULT_HELLOINT))
     {
         Debug("-> PWOSPF: HELLO Packet dropped, invalid hello interval\n");
         return;
     }
 
-    /*OJOOOOOOOOOOOOOOOOOOOOOOO CON REVISAR ESTE METODO QUE HAGA LO QUE DICE ACA*/
     /* Seteo el vecino en la interfaz por donde llegó y actualizo la lista de vecinos */
 
     /* Si es un nuevo vecino, debo enviar LSUs por todas mis interfaces*/
@@ -900,13 +817,17 @@ void sr_handle_pwospf_hello_packet(struct sr_instance* sr, uint8_t* packet, unsi
     }
     rx_if->neighbor_ip = ipHeader->ip_src;
 
-    refresh_neighbors_alive(g_neighbors,neighbor_id);
+    refresh_neighbors_alive(g_neighbors,neighbor_id);       
 
     if(new_ngbor == 1){
+        struct sr_if* ifaces = rx_if;
+        while(ifaces != NULL){           /*SE AGERGO EL WHILE PARA ENVIAR A TODAS LAS IFACES*/
         powspf_hello_lsu_param_t* paramLsu = ((powspf_hello_lsu_param_t*)(malloc(sizeof(powspf_hello_lsu_param_t))));
         paramLsu->sr = sr;
-        paramLsu->interface = rx_if;
+        paramLsu->interface = ifaces;
         pthread_create(&g_lsu_thread, NULL, send_lsu, paramLsu);
+        ifaces = ifaces->next;
+        }
     }
 
     printf("----------------\n");
@@ -939,7 +860,12 @@ void* sr_handle_pwospf_lsu_packet(void* arg)
 
     struct in_addr neighbor_id;
     neighbor_id.s_addr = ospfv2Header->rid;
-    Debug("-> PWOSPF: Detecting LSU Packet from [Neighbor ID = %s]\n", inet_ntoa(neighbor_id));
+
+    struct in_addr src_ip;
+    src_ip.s_addr = ipHeader->ip_src;
+
+    Debug("-> PWOSPF: Detecting LSU Packet from [Neighbor ID = %s, IP = %s]\n", inet_ntoa(neighbor_id), inet_ntoa(src_ip));
+
 
     /* Chequeo checksum */
     uint16_t comingCsum = ospfv2Header->csum;
@@ -960,16 +886,16 @@ void* sr_handle_pwospf_lsu_packet(void* arg)
         return NULL;        
     }
 
-    /* Obtengo el número de secuencia y uso check_sequence_number para ver si ya lo recibí desde ese vecino
+    /* Obtengo el número de secuencia y uso check_sequence_number para ver si ya lo recibí desde ese vecino*/
     uint16_t seqNumber = lsuHeader->seq;
-    if(check_sequence_number(g_topology, g_router_id, seqNumber)){
+    if(!check_sequence_number(g_topology, g_router_id, seqNumber)){
         Debug("-> PWOSPF: LSU Packet dropped, repeated sequence number\n");
         return NULL;
-    }*/
+    }
 
 
     /* Itero en los LSA que forman parte del LSU. Para cada uno, actualizo la topología.*/
-    /*Debug("-> PWOSPF: Processing LSAs and updating topology table\n");*/        
+    Debug("-> PWOSPF: Processing LSAs and updating topology table\n");      
         /* Obtengo subnet */
         /* Obtengo vecino */
         /* Imprimo info de la entrada de la topología */
@@ -985,15 +911,19 @@ void* sr_handle_pwospf_lsu_packet(void* arg)
         net_mask.s_addr = lsaHeader->mask;
         struct in_addr neighbor_id;
         neighbor_id.s_addr = lsaHeader->rid;
-        
-        Debug("      [Subnet = %s]", inet_ntoa(net_num));
-        Debug("      [Mask = %s]", inet_ntoa(net_mask));
-        Debug("      [Neighbor ID = %s]\n", inet_ntoa(neighbor_id));
 
         struct in_addr src_addr;
         struct in_addr rid;
         src_addr.s_addr = ipHeader->ip_src;
         rid.s_addr = ospfv2Header->rid;
+        
+        Debug("      [Subnet = %s]", inet_ntoa(net_num));
+        Debug("      [Mask = %s]", inet_ntoa(net_mask));
+        Debug("      [Neighbor ID = %s]\n", inet_ntoa(neighbor_id));
+        Debug("      [Next HOP = %s]\n", inet_ntoa(src_addr));
+
+
+
         refresh_topology_entry(g_topology, rid, net_num, net_mask, neighbor_id, src_addr, htons(lsuHeader->seq));
     }
 
@@ -1007,7 +937,6 @@ void* sr_handle_pwospf_lsu_packet(void* arg)
     dijkstraParam->sr = rx_lsu_param->sr;
     dijkstraParam->topology = g_topology;
     pthread_create(&g_dijkstra_thread, NULL, run_dijkstra, dijkstraParam);
-
 
 
     /* Flooding del LSU por todas las interfaces menos por donde me llegó */
@@ -1030,19 +959,37 @@ void* sr_handle_pwospf_lsu_packet(void* arg)
             struct timeval tv;
             gettimeofday(&tv, NULL); /* Obtiene la hora actual en segundos y microsegundos*/
             int id = (int)((tv.tv_sec * 1000 + tv.tv_usec / 1000) % 2147483647);
-            ipHdr->ip_id = id;
-            ipHdr->ip_sum = 0;
-            ipHdr->ip_src = ifaces->ip; /*OJOOOOOOOOOO aca puede ser que sea con s_addr*/
-            ipHdr->ip_sum = ip_cksum(ipHdr, sizeof(sr_ip_hdr_t));
+            ((sr_ip_hdr_t*)(rx_lsu_param->packet + sizeof(sr_ethernet_hdr_t)))->ip_id = id;
+            ((sr_ip_hdr_t*)(rx_lsu_param->packet + sizeof(sr_ethernet_hdr_t)))->ip_sum = 0;
+            ((sr_ip_hdr_t*)(rx_lsu_param->packet + sizeof(sr_ethernet_hdr_t)))->ip_id = id;
+            ((sr_ip_hdr_t*)(rx_lsu_param->packet + sizeof(sr_ethernet_hdr_t)))->ip_id = ip_cksum(ipHdr, sizeof(sr_ip_hdr_t));
+            ((sr_ip_hdr_t*)(rx_lsu_param->packet + sizeof(sr_ethernet_hdr_t)))->ip_src = ifaces->ip;
+            ((sr_ip_hdr_t*)(rx_lsu_param->packet + sizeof(sr_ethernet_hdr_t)))->ip_dst = ifaces->neighbor_ip;
 
-            /* Ajusto cabezal OSPF: checksum y TTL*/           
-            lsuHeader->ttl--;
+            ((ospfv2_hdr_t*)(rx_lsu_param->packet + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t)))->csum = 0;
+            ((ospfv2_hdr_t*)(rx_lsu_param->packet + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t)))->csum = ospfv2_cksum(ospfv2Header, htons(((ospfv2_hdr_t*)(rx_lsu_param->packet + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t)))->len));
+            
+            ((ospfv2_lsu_hdr_t*)(rx_lsu_param->packet + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t) + sizeof(ospfv2_hdr_t)))->ttl--;
 
-            ospfv2Header->csum = 0;
-            ospfv2Header->csum = ospfv2_cksum(ospfv2Header, htons(((ospfv2_hdr_t*)(rx_lsu_param->packet + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t)))->len));
 
-            /* Envío el paquete*/
-            sr_send_packet(rx_lsu_param->sr, ((uint8_t*)(rx_lsu_param->packet)), rx_lsu_param->length, ifaces->name);
+            /* Me falta la MAC para poder enviar el paquete, la busco en la cache ARP*/
+            struct sr_arpentry *arpEntry = sr_arpcache_lookup(&(rx_lsu_param->sr->cache), ifaces->neighbor_ip);
+            /* Envío el paquete si obtuve la MAC o lo guardo en la cola para cuando tenga la MAC*/
+            
+            if(arpEntry){
+                int i;
+                for (i = 0; i < ETHER_ADDR_LEN; i++)
+                {
+                    ((sr_ethernet_hdr_t*)(rx_lsu_param->packet))->ether_dhost[i] = arpEntry->mac[i];
+                }
+                sr_send_packet(rx_lsu_param->sr, ((uint8_t*)(rx_lsu_param->packet)), rx_lsu_param->length , ifaces->name);
+            }
+            else{
+                struct sr_arpreq *arpReq = sr_arpcache_queuereq(&(rx_lsu_param->sr->cache),ifaces->neighbor_ip ,((uint8_t*)(rx_lsu_param->packet)), rx_lsu_param->length, ifaces->name);
+                if(arpReq != NULL){
+                    handle_arpreq(rx_lsu_param->sr,arpReq);
+                }
+            }
         }
 
         ifaces = ifaces->next;
@@ -1070,7 +1017,7 @@ void sr_handle_pwospf_packet(struct sr_instance* sr, uint8_t* packet, unsigned i
 {
     /*Si aún no terminó la inicialización, se descarta el paquete recibido*/
     if (g_router_id.s_addr == 0) {
-       return;
+        return;
     }
 
     ospfv2_hdr_t* rx_ospfv2_hdr = ((ospfv2_hdr_t*)(packet + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t)));

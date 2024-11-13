@@ -65,6 +65,9 @@ void sr_init(struct sr_instance* sr)
 
 struct sr_rt* longest_prefix_match(struct sr_instance* sr, uint32_t ip_dst) {
     
+    printf("BUSCANDOOO\n");
+    print_addr_ip_int(ip_dst);
+
     struct sr_rt* rt_entry = sr->routing_table;
     struct sr_rt* best_match = NULL;
     uint32_t longest_match_len = 0;
@@ -119,6 +122,9 @@ void sr_send_icmp_error_packet(uint8_t type,
                             uint32_t ipDst,
                               uint8_t *ipPacket)
 {
+    printf("El valor del tipo error es: %u\n", type);
+    printf("El valor del codigo error es: %u\n", code);
+
     /* Definir el tamaño del nuevo paquete ICMP (Ethernet + IP + ICMP) */
     int icmpPacketLen = sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t) + sizeof(sr_icmp_t3_hdr_t);
 
@@ -144,6 +150,7 @@ void sr_send_icmp_error_packet(uint8_t type,
     /* Time exceeded (type 11, code 0) */
     
     /* -- Enviar el paquete ICMP -- */
+
     struct sr_rt* match = longest_prefix_match(sr, ipDst);
     printf("Interface: %s\n",  match->interface);
 
@@ -292,11 +299,6 @@ void sr_handle_ip_packet(struct sr_instance *sr,
     
     /* Verificar si el paquete es para una de mis interfaces */
     struct sr_if *myInterface = sr_get_interface_given_ip(sr, ipHdr->ip_dst);
-    printf("******************************\n");
-    print_addr_ip_int(ipHdr->ip_dst);
-    printf("------\n");
-    print_addr_ip_int(OSPF_AllSPFRouters);
-    printf("******************************\n");
     /*----------------------------------------------------------*/
     /*-----------------EL PAQUETE ES PARA MI--------------------*/
     /*----------------------------------------------------------*/
@@ -304,6 +306,7 @@ void sr_handle_ip_packet(struct sr_instance *sr,
     if (myInterface || ipHdr->ip_dst == htonl(OSPF_AllSPFRouters) ) {
 
         printf("**** -> IP packet is for me.\n");
+        printf("El valor del protocolo es: %u\n", ipHdr->ip_p);
         if (ipHdr->ip_p == ip_protocol_icmp) {
             sr_icmp_hdr_t *icmpHdr = (sr_icmp_hdr_t *)(packet + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t));
 
@@ -323,7 +326,6 @@ void sr_handle_ip_packet(struct sr_instance *sr,
                 ipHdr->ip_dst = temp_ip;
                 ipHdr->ip_sum = 0;
                 ipHdr->ip_sum = cksum(ipHdr, sizeof(sr_ip_hdr_t));
-
                 /* Buscar en la tabla de enrutamiento si hay coincidencia */
                 struct sr_rt *match = longest_prefix_match(sr, ipHdr->ip_dst);
 
