@@ -233,9 +233,9 @@ void* check_neighbors_life(void* arg)
                 }
                 iface = iface->next;
             }
-            /* Pasa al siguiente vecino en la lista */
+            struct ospfv2_neighbor* temp = updated_neighbor;
             updated_neighbor = updated_neighbor->next;
-            /*BORRAR MEMORIA DE UPDATED*/
+            free(temp);
         }
 
         
@@ -279,6 +279,7 @@ void* check_topology_entries_age(void* arg)
             print_topolgy_table(g_topology);
 
             pthread_create(&g_dijkstra_thread,NULL,run_dijkstra,dijkstraParam);
+            free(dijkstraParam);
         }
     }
     
@@ -325,7 +326,8 @@ void* send_hellos(void* arg)
                 struct powspf_hello_lsu_param* hParam = ((powspf_hello_lsu_param_t*)(malloc(sizeof(powspf_hello_lsu_param_t))));
                 hParam->sr = sr;
                 hParam->interface = ifaces;
-                pthread_create(&g_hello_packet_thread,NULL,send_hello_packet,hParam);
+                send_hello_packet(hParam);
+                free(hParam);
                 /* Reiniciar el contador de segundos para HELLO */
                 ifaces->helloint = OSPF_DEFAULT_HELLOINT;
             }
@@ -439,7 +441,11 @@ void* send_hello_packet(void* arg)
     printf("----------------\n");
 
 
-    /*LIBERAR CABEZALES Y LUEGO DE ENVIAR TMABIEN EL PAQUETE =================================================*/
+    free(ethHeader);
+    free(ipHeader);
+    free(ospfHeader);
+    free(ospfHelloHeader);
+    free(packet);
 
     return NULL;
 } /* -- send_hello_packet -- */
@@ -473,7 +479,8 @@ void* send_all_lsu(void* arg)
                 powspf_hello_lsu_param_t* paramLsu = ((powspf_hello_lsu_param_t*)(malloc(sizeof(powspf_hello_lsu_param_t))));
                 paramLsu->sr = sr;
                 paramLsu->interface = ifaces;
-                pthread_create(&g_lsu_thread, NULL, send_lsu, paramLsu);
+                send_lsu(paramLsu);
+                free(paramLsu);
             }
             ifaces = ifaces->next;
         }
@@ -592,16 +599,18 @@ void* send_lsu(void* arg)
         ospfv2_cksum((ospfv2_hdr_t*)(tx_packet + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t)), 
                      sizeof(ospfv2_hdr_t) + sizeof(ospfv2_lsu_hdr_t) + (sizeof(ospfv2_lsa_t) * routes_num));
 
+    printf("IP VECINOO\n");
+    print_addr_ip_int(lsu_param->interface->neighbor_ip);
     struct sr_arpentry *arpEntry = sr_arpcache_lookup(&(lsu_param->sr->cache), lsu_param->interface->neighbor_ip);
     
     /* Envío el paquete si obtuve la MAC o lo guardo en la cola para cuando tenga la MAC*/
     Debug("-> PWOSPF: Sending LSU Packet of length = %d, out of the interface: %s\n", packet_len, lsu_param->interface->name);
     if(arpEntry){
-        
         int l;
         for(l=0; l<ETHER_ADDR_LEN; l++){
-            tx_e_hdr->ether_dhost[i] = arpEntry->mac[i];
+            tx_e_hdr->ether_dhost[l] = arpEntry->mac[l];
         }
+        free(arpEntry);
         memcpy(tx_packet, tx_e_hdr, sizeof(sr_ethernet_hdr_t));
         sr_send_packet(lsu_param->sr, tx_packet, packet_len , lsu_param->interface->name);
     }
@@ -615,7 +624,11 @@ void* send_lsu(void* arg)
 
 
     free(tx_packet);
-
+    free(tx_e_hdr);
+    free(tx_ip_hdr);
+    free(tx_ospf_hdr);
+    free(tx_ospf_lsu_hdr);
+    free(tx_ospf_lsa);
     return NULL;
 } 
 /* -- send_lsu -- */
@@ -701,11 +714,12 @@ void sr_handle_pwospf_hello_packet(struct sr_instance* sr, uint8_t* packet, unsi
                                                         /*ESTA BIEN? ==============================================*/
     if(new_ngbor == 1){
         struct sr_if* ifaces = rx_if;
-        while(ifaces != NULL){           /*SE AGERGO EL WHILE PARA ENVIAR A TODAS LAS IFACES*/
+        while(ifaces != NULL){          
         powspf_hello_lsu_param_t* paramLsu = ((powspf_hello_lsu_param_t*)(malloc(sizeof(powspf_hello_lsu_param_t))));
         paramLsu->sr = sr;
         paramLsu->interface = ifaces;
-        pthread_create(&g_lsu_thread, NULL, send_lsu, paramLsu);
+        send_lsu(paramLsu);
+        free(paramLsu);
         ifaces = ifaces->next;
         }
     }
@@ -818,7 +832,6 @@ void* sr_handle_pwospf_lsu_packet(void* arg)
     dijkstraParam->topology = g_topology;
     pthread_create(&g_dijkstra_thread, NULL, run_dijkstra, dijkstraParam);
 
-
     /* Flooding del LSU por todas las interfaces menos por donde me llegó */
 
     struct sr_if* ifaces = rx_lsu_param->sr->if_list;
@@ -850,8 +863,6 @@ void* sr_handle_pwospf_lsu_packet(void* arg)
 
 
             /* Me falta la MAC para poder enviar el paquete, la busco en la cache ARP*/
-            printf("===========NEIGHBOR IP============\n");
-            print_addr_ip_int(ifaces->neighbor_ip);
             struct sr_arpentry *arpEntry = sr_arpcache_lookup(&(rx_lsu_param->sr->cache), ifaces->neighbor_ip);
             /* Envío el paquete si obtuve la MAC o lo guardo en la cola para cuando tenga la MAC*/
             
@@ -861,6 +872,7 @@ void* sr_handle_pwospf_lsu_packet(void* arg)
                 {
                     ((sr_ethernet_hdr_t*)(rx_lsu_param->packet))->ether_dhost[i] = arpEntry->mac[i];
                 }
+                free(arpEntry);
                 sr_send_packet(rx_lsu_param->sr, ((uint8_t*)(rx_lsu_param->packet)), rx_lsu_param->length , ifaces->name);
             }
             else{
@@ -873,6 +885,7 @@ void* sr_handle_pwospf_lsu_packet(void* arg)
 
         ifaces = ifaces->next;
     }
+
 
     
     printf("----------------\n");
