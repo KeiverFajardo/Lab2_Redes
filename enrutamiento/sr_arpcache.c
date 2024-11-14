@@ -152,14 +152,12 @@ struct sr_arpreq *sr_arpcache_queuereq(struct sr_arpcache *cache,
                                        char *iface)
 {
     pthread_mutex_lock(&(cache->lock));
-    
     struct sr_arpreq *req;
     for (req = cache->requests; req != NULL; req = req->next) {
         if (req->ip == ip) {
             break;
         }
     }
-    
     /* If the IP wasn't found, add it */
     if (!req) {
         req = (struct sr_arpreq *) calloc(1, sizeof(struct sr_arpreq));
@@ -167,11 +165,9 @@ struct sr_arpreq *sr_arpcache_queuereq(struct sr_arpcache *cache,
         req->next = cache->requests;
         cache->requests = req;
     }
-    
     /* Add the packet to the list of packets for this request */
     if (packet && packet_len && iface) {
         struct sr_packet *new_pkt = (struct sr_packet *)malloc(sizeof(struct sr_packet));
-        
         new_pkt->buf = (uint8_t *)malloc(packet_len);
         memcpy(new_pkt->buf, packet, packet_len);
         new_pkt->len = packet_len;
@@ -187,8 +183,8 @@ struct sr_arpreq *sr_arpcache_queuereq(struct sr_arpcache *cache,
 }
 
 /* This method performs two functions:
-   1) Looks up this IP in the request queue. If it is found, returns a pointer
-      to the sr_arpreq with this IP. Otherwise, returns NULL.
+1) Looks up this IP in the request queue. If it is found, returns a pointer
+    to the sr_arpreq with this IP. Otherwise, returns NULL.
    2) Inserts this IP to MAC mapping in the cache, and marks it valid. */
 struct sr_arpreq *sr_arpcache_insert(struct sr_arpcache *cache,
                                      unsigned char *mac,

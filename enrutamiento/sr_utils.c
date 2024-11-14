@@ -108,7 +108,8 @@ int is_packet_valid(uint8_t *packet /* lent */,
           cumulative_sz += sizeof(ospfv2_hdr_t);
 
           if (len >= cumulative_sz) {
-            printf("****** -> Packet length is correct.\n");
+            /*print_hdr_ospf(ospfHdr);
+            printf("El valor del cksum es: %d\n", ospfv2_cksum(ospfHdr, len - ospfOffset));*/
             if (ospfv2_cksum(ospfHdr, len - ospfOffset) == ospfHdr->csum) {
               printf("****** -> OSPF packet checksum is correct.\n");
               return 1;
@@ -270,7 +271,7 @@ void print_hdr_ospf(uint8_t* buf) {
   print_addr_ip_int(ntohl(ospf_hdr->aid));
   fprintf(stderr, "\tchecksum: %d\n", ospf_hdr->csum);
   fprintf(stderr, "\tauthentication type: %d\n", ospf_hdr->autype);
-  fprintf(stderr, "\tauthentication data: %d\n", ospf_hdr->audata);
+  fprintf(stderr, "\tauthentication data: %ld\n", ospf_hdr->audata);
 }
 
 /* Prints out all possible headers, starting from Ethernet */
