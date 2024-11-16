@@ -344,7 +344,7 @@ void sr_handle_ip_packet(struct sr_instance *sr,
                         /* Reenviar el paquete si hay coincidencia en la tabla ARP */
                         printf("**** -> Returning IP packet.\n");
 
-                        memcpy(eHdr->ether_dhost, arpEntry->mac, ETHER_ADDR_LEN);/*=================SE COPIA AL PAQUETE????==========================*/
+                        memcpy(eHdr->ether_dhost, arpEntry->mac, ETHER_ADDR_LEN);
                         memcpy(eHdr->ether_shost, destAddr, ETHER_ADDR_LEN);
 
                         sr_send_packet(sr, packet, len, match->interface);

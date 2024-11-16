@@ -209,10 +209,6 @@ void* check_neighbors_life(void* arg)
     Cada 1 segundo, chequea la lista de vecinos. 
     Si hay un cambio, se debe ajustar el neighbor id en la interfaz.
     */
-    printf("----------------\n");
-    printf("COMIENZO FUNC. CHECK NEIGHBORS LIFE\n");
-    printf("----------------\n");
-
     struct sr_instance* sr = (struct sr_instance*)arg;
 
     while(1){
@@ -226,7 +222,6 @@ void* check_neighbors_life(void* arg)
 
             while (iface != NULL) {
                 if (iface->neighbor_id == updated_neighbor->neighbor_id.s_addr) {
-                    printf("Actualizando el ID del vecino en la interfaz: %s\n", iface->name);
                     iface->neighbor_id = 0;  
                     iface->neighbor_ip = 0;
                     break;
