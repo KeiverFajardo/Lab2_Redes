@@ -555,8 +555,8 @@ void* send_lsu(void* arg)
     tx_ospf_hdr->audata = 0;
 
     ospfv2_lsu_hdr_t* tx_ospf_lsu_hdr = ((ospfv2_lsu_hdr_t*)(malloc(sizeof(ospfv2_lsu_hdr_t))));
-    g_sequence_num++;
     tx_ospf_lsu_hdr->seq = htons(g_sequence_num);
+    g_sequence_num++;
     tx_ospf_lsu_hdr->unused = 0;
     tx_ospf_lsu_hdr->ttl = 64;
     tx_ospf_lsu_hdr->num_adv = htonl(routes_num);
@@ -597,10 +597,8 @@ void* send_lsu(void* arg)
     /* Calculo el checksum del paquete LSU */
     ((ospfv2_hdr_t*)(tx_packet + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t)))->csum =
         ospfv2_cksum((ospfv2_hdr_t*)(tx_packet + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t)), 
-                     sizeof(ospfv2_hdr_t) + sizeof(ospfv2_lsu_hdr_t) + (sizeof(ospfv2_lsa_t) * routes_num));
+                    sizeof(ospfv2_hdr_t) + sizeof(ospfv2_lsu_hdr_t) + (sizeof(ospfv2_lsa_t) * routes_num));
 
-    printf("IP VECINOO\n");
-    print_addr_ip_int(lsu_param->interface->neighbor_ip);
     struct sr_arpentry *arpEntry = sr_arpcache_lookup(&(lsu_param->sr->cache), lsu_param->interface->neighbor_ip);
     
     /* Envío el paquete si obtuve la MAC o lo guardo en la cola para cuando tenga la MAC*/
@@ -711,7 +709,7 @@ void sr_handle_pwospf_hello_packet(struct sr_instance* sr, uint8_t* packet, unsi
     rx_if->neighbor_ip = ipHeader->ip_src;
 
     refresh_neighbors_alive(g_neighbors,neighbor_id);       
-                                                        /*ESTA BIEN? ==============================================*/
+
     if(new_ngbor == 1){
         struct sr_if* ifaces = rx_if;
         while(ifaces != NULL){          
@@ -820,7 +818,6 @@ void* sr_handle_pwospf_lsu_packet(void* arg)
 
         refresh_topology_entry(g_topology, rid, net_num, net_mask, neighbor_id, src_addr, htons(lsuHeader->seq));
     }
-
     /* Imprimo la topología */
     Debug("\n-> PWOSPF: Printing the topology table\n");
     print_topolgy_table(g_topology);
@@ -831,14 +828,19 @@ void* sr_handle_pwospf_lsu_packet(void* arg)
     dijkstraParam->sr = rx_lsu_param->sr;
     dijkstraParam->topology = g_topology;
     pthread_create(&g_dijkstra_thread, NULL, run_dijkstra, dijkstraParam);
-
+    /*free(dijkstraParam);*/
     /* Flooding del LSU por todas las interfaces menos por donde me llegó */
 
     struct sr_if* ifaces = rx_lsu_param->sr->if_list;
     while (ifaces != NULL)
     {
+        printf("La interfaz POSIBLE es: %s\n", ifaces->name);
+        print_addr_ip_int(ifaces->neighbor_ip);
         if (((strcmp(ifaces->name, rx_lsu_param->rx_if->name) != 0) && (ifaces->neighbor_ip != 0)))
         {
+            printf("RENVIANDO LSU HACIA: ===============================================\n");
+            printf("La interfaz es: %s\n", ifaces->name);
+            print_addr_ip_int(ifaces->neighbor_ip);
             /* Seteo MAC de origen */
             int i;
             for (i = 0; i < ETHER_ADDR_LEN; i++)
@@ -896,7 +898,7 @@ void* sr_handle_pwospf_lsu_packet(void* arg)
 
 /**********************************************************************************
  * SU CÓDIGO DEBERÍA TERMINAR AQUÍ
- * *********************************************************************************/
+ **********************************************************************************/
 
 /*---------------------------------------------------------------------
  * Method: sr_handle_pwospf_packet

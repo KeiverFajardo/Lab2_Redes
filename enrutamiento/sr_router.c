@@ -337,20 +337,18 @@ void sr_handle_ip_packet(struct sr_instance *sr,
                     return;
                 }else {
                     /* Buscar la dirección MAC de la interfaz en la tabla ARP */
-                        
-                    /* print_addr_ip_int(sr->cache.entries[0].ip) */
+
                     struct sr_arpentry *arpEntry = sr_arpcache_lookup(&(sr->cache), match->gw.s_addr);
 
                     if (arpEntry) {
                         /* Reenviar el paquete si hay coincidencia en la tabla ARP */
                         printf("**** -> Returning IP packet.\n");
 
-                        memcpy(eHdr->ether_dhost, arpEntry->mac, ETHER_ADDR_LEN);
+                        memcpy(eHdr->ether_dhost, arpEntry->mac, ETHER_ADDR_LEN);/*=================SE COPIA AL PAQUETE????==========================*/
                         memcpy(eHdr->ether_shost, destAddr, ETHER_ADDR_LEN);
 
-                        printf("Interface: %s\n",  match->interface);
                         sr_send_packet(sr, packet, len, match->interface);
-                        /* free(arpEntry); */
+                        free(arpEntry);
 
                         printf("$$$ -> Sent sr_send_packet complete luego de conseguir la mac directamente.\n");
                         return;
@@ -361,15 +359,15 @@ void sr_handle_ip_packet(struct sr_instance *sr,
                         struct sr_arpreq *arpReq = NULL;  
 
                         if (match->gw.s_addr == htonl(INADDR_ANY)) {
-                            printf("-------------DEFAULT ROUTE-------------\n");
+                            /*printf("-------------DEFAULT ROUTE-------------\n");*/
                             arpReq = sr_arpcache_queuereq(&(sr->cache), ipHdr->ip_dst, packet, len, match->interface);
                         } else {
-                            printf("-------------NEXT ROUTE-------------\n");
+                            /*printf("-------------NEXT ROUTE-------------\n");*/
                             arpReq = sr_arpcache_queuereq(&(sr->cache), match->gw.s_addr, packet, len, match->interface);
                         }
 
                         if (arpReq) {
-                            printf("---------------- HANDLING ARP REQ ----------------------\n");
+                            /*printf("---------------- HANDLING ARP REQ ----------------------\n");*/
                             handle_arpreq(sr, arpReq);
                         }
                         return;
@@ -437,7 +435,7 @@ void sr_handle_ip_packet(struct sr_instance *sr,
                 memcpy(eHdr->ether_dhost, arpEntry->mac, ETHER_ADDR_LEN);
 
                 sr_send_packet(sr, packet, len, match2->interface);
-                /* free(arpEntry); */
+                free(arpEntry); 
 
                 printf("$$$ -> Sent sr_send_packet complete luego de conseguir la mac directamente.\n");
                 return;
@@ -491,9 +489,9 @@ void sr_arp_reply_send_pending_packets(struct sr_instance *sr,
      copyPacket = malloc(sizeof(uint8_t) * currPacket->len);
      memcpy(copyPacket, ethHdr, sizeof(uint8_t) * currPacket->len);
 
-     print_hdrs(copyPacket, currPacket->len);
-     sr_send_packet(sr, copyPacket, currPacket->len, iface->name);
-     currPacket = currPacket->next;
+    print_hdrs(copyPacket, currPacket->len);
+    sr_send_packet(sr, copyPacket, currPacket->len, iface->name);
+    currPacket = currPacket->next;
   }
 }
 

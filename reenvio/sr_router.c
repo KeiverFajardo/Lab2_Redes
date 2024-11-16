@@ -20,11 +20,9 @@
 #include "sr_protocol.h"
 #include "sr_arpcache.h"
 #include "sr_utils.h"
-
-#include <stdint.h>
-#include <arpa/inet.h>
-#include <netinet/in.h>
-
+/*#include "pwospf_protocol.h"*/
+/*#include "sr_pwospf.h"*/
+uint8_t sr_multicast_mac[ETHER_ADDR_LEN];
 
 /*---------------------------------------------------------------------
  * Method: sr_init(void)
@@ -37,6 +35,17 @@
 void sr_init(struct sr_instance* sr)
 {
     assert(sr);
+
+    /* Inicializa el subsistema OSPF */
+    pwospf_init(sr);
+
+    /* Dirección MAC de multicast OSPF */
+    sr_multicast_mac[0] = 0x01;
+    sr_multicast_mac[1] = 0x00;
+    sr_multicast_mac[2] = 0x5e;
+    sr_multicast_mac[3] = 0x00;
+    sr_multicast_mac[4] = 0x00;
+    sr_multicast_mac[5] = 0x05;
 
     /* Inicializa la caché y el hilo de limpieza de la caché */
     sr_arpcache_init(&(sr->cache));
@@ -53,9 +62,11 @@ void sr_init(struct sr_instance* sr)
 
 } /* -- sr_init -- */
 
-
 struct sr_rt* longest_prefix_match(struct sr_instance* sr, uint32_t ip_dst) {
     
+    printf("BUSCANDOOO\n");
+    print_addr_ip_int(ip_dst);
+
     struct sr_rt* rt_entry = sr->routing_table;
     struct sr_rt* best_match = NULL;
     uint32_t longest_match_len = 0;
@@ -89,7 +100,6 @@ struct sr_rt* longest_prefix_match(struct sr_instance* sr, uint32_t ip_dst) {
 
     /* Si se encontró la mejor coincidencia, devolver la entrada de la tabla de enrutamiento */
     printf("**********BEST MATCH*********\n");
-    sr_print_routing_entry(best_match);
     return best_match;
 }
 
@@ -111,6 +121,9 @@ void sr_send_icmp_error_packet(uint8_t type,
                             uint32_t ipDst,
                               uint8_t *ipPacket)
 {
+    printf("El valor del tipo error es: %u\n", type);
+    printf("El valor del codigo error es: %u\n", code);
+
     /* Definir el tamaño del nuevo paquete ICMP (Ethernet + IP + ICMP) */
     int icmpPacketLen = sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t) + sizeof(sr_icmp_t3_hdr_t);
 
@@ -136,6 +149,7 @@ void sr_send_icmp_error_packet(uint8_t type,
     /* Time exceeded (type 11, code 0) */
     
     /* -- Enviar el paquete ICMP -- */
+
     struct sr_rt* match = longest_prefix_match(sr, ipDst);
     printf("Interface: %s\n",  match->interface);
 
@@ -284,14 +298,14 @@ void sr_handle_ip_packet(struct sr_instance *sr,
     
     /* Verificar si el paquete es para una de mis interfaces */
     struct sr_if *myInterface = sr_get_interface_given_ip(sr, ipHdr->ip_dst);
-    
     /*----------------------------------------------------------*/
     /*-----------------EL PAQUETE ES PARA MI--------------------*/
     /*----------------------------------------------------------*/
     
-    if (myInterface) {
+    if (myInterface || ipHdr->ip_dst == htonl(OSPF_AllSPFRouters) ) {
 
         printf("**** -> IP packet is for me.\n");
+        printf("El valor del protocolo es: %u\n", ipHdr->ip_p);
         if (ipHdr->ip_p == ip_protocol_icmp) {
             sr_icmp_hdr_t *icmpHdr = (sr_icmp_hdr_t *)(packet + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t));
 
@@ -311,7 +325,6 @@ void sr_handle_ip_packet(struct sr_instance *sr,
                 ipHdr->ip_dst = temp_ip;
                 ipHdr->ip_sum = 0;
                 ipHdr->ip_sum = cksum(ipHdr, sizeof(sr_ip_hdr_t));
-
                 /* Buscar en la tabla de enrutamiento si hay coincidencia */
                 struct sr_rt *match = longest_prefix_match(sr, ipHdr->ip_dst);
 
@@ -323,20 +336,23 @@ void sr_handle_ip_packet(struct sr_instance *sr,
                     return;
                 }else {
                     /* Buscar la dirección MAC de la interfaz en la tabla ARP */
-                        
-                    /* print_addr_ip_int(sr->cache.entries[0].ip) */
+
                     struct sr_arpentry *arpEntry = sr_arpcache_lookup(&(sr->cache), match->gw.s_addr);
 
                     if (arpEntry) {
                         /* Reenviar el paquete si hay coincidencia en la tabla ARP */
                         printf("**** -> Returning IP packet.\n");
 
-                        memcpy(eHdr->ether_dhost, arpEntry->mac, ETHER_ADDR_LEN);
+                        memcpy(eHdr->ether_dhost, arpEntry->mac, ETHER_ADDR_LEN);/*=================SE COPIA AL PAQUETE????==========================*/
                         memcpy(eHdr->ether_shost, destAddr, ETHER_ADDR_LEN);
+                        
+                        printf("==========================================\n");
+                        print_hdr_eth(eHdr);
+                        print_hdr_eth((sr_ethernet_hdr_t *)(packet));
+                        printf("==========================================\n");
 
-                        printf("Interface: %s\n",  match->interface);
                         sr_send_packet(sr, packet, len, match->interface);
-                        /* free(arpEntry); */
+                        free(arpEntry);
 
                         printf("$$$ -> Sent sr_send_packet complete luego de conseguir la mac directamente.\n");
                         return;
@@ -347,22 +363,25 @@ void sr_handle_ip_packet(struct sr_instance *sr,
                         struct sr_arpreq *arpReq = NULL;  
 
                         if (match->gw.s_addr == htonl(INADDR_ANY)) {
-                            printf("-------------DEFAULT ROUTE-------------\n");
+                            /*printf("-------------DEFAULT ROUTE-------------\n");*/
                             arpReq = sr_arpcache_queuereq(&(sr->cache), ipHdr->ip_dst, packet, len, match->interface);
                         } else {
-                            printf("-------------NEXT ROUTE-------------\n");
+                            /*printf("-------------NEXT ROUTE-------------\n");*/
                             arpReq = sr_arpcache_queuereq(&(sr->cache), match->gw.s_addr, packet, len, match->interface);
                         }
 
                         if (arpReq) {
-                            printf("---------------- HANDLING ARP REQ ----------------------\n");
+                            /*printf("---------------- HANDLING ARP REQ ----------------------\n");*/
                             handle_arpreq(sr, arpReq);
                         }
                         return;
                     }
                 }
             }
-        } else {
+        } else if (ipHdr->ip_p == ip_protocol_ospfv2){
+            struct sr_if *inter = sr_get_interface(sr,interface);
+            sr_handle_pwospf_packet(sr, packet, len, inter);
+        } else{
             printf("**** -> CARGA TCP o UDP, sending ICMP Port unreachable.\n");
             sr_send_icmp_error_packet(3, 3, sr, ipHdr->ip_src, packet);
             printf("Packet is for me but not an ICMP request, ignoring\n");
@@ -451,21 +470,6 @@ void sr_handle_ip_packet(struct sr_instance *sr,
     }
 }
 
-
-/*
-TO DO:
-Me queda cambiar lo de nameInterface a lo que devuelve la funcion logest_pef..() -> interface
-Cambiar a que mande eso la busqueda de la cache
-*/
-
-
-/*--------------------------------------------------------------------------------------------------------------------------------------*/
-/*--------------------------------------------------------------------------------------------------------------------------------------*/
-/*-----------------------------------------------------FIN------------------------------------------------------------------------------*/
-/*--------------------------------------------------------------------------------------------------------------------------------------*/
-/*--------------------------------------------------------------------------------------------------------------------------------------*/
-
-
 /* 
 * ***** A partir de aquí no debería tener que modificar nada ****
 */
@@ -490,7 +494,6 @@ void sr_arp_reply_send_pending_packets(struct sr_instance *sr,
      memcpy(copyPacket, ethHdr, sizeof(uint8_t) * currPacket->len);
 
      print_hdrs(copyPacket, currPacket->len);
-     printf("Interface: %s\n",  iface->name);
      sr_send_packet(sr, copyPacket, currPacket->len, iface->name);
      currPacket = currPacket->next;
   }
@@ -548,7 +551,7 @@ void sr_handle_arp_packet(struct sr_instance *sr,
 
       /* Imprimo el cabezal del ARP reply creado */
       print_hdrs(packet, len);
-      printf("Interface: %s\n",  myInterface->name);
+
       sr_send_packet(sr, packet, len, myInterface->name);
     }
 
