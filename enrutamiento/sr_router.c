@@ -122,6 +122,8 @@ void sr_send_icmp_error_packet(uint8_t type,
                             uint32_t ipDst,
                               uint8_t *ipPacket)
 {
+    
+    printf("Se genero un ICMP de error\n");
     printf("El valor del tipo error es: %u\n", type);
     printf("El valor del codigo error es: %u\n", code);
 
@@ -129,10 +131,6 @@ void sr_send_icmp_error_packet(uint8_t type,
     int icmpPacketLen = sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t) + sizeof(sr_icmp_t3_hdr_t);
 
     uint8_t *icmpPacket = malloc(icmpPacketLen);
-    if (!icmpPacket) {
-        fprintf(stderr, "Error al asignar memoria para el paquete ICMP\n");
-        return;
-    }
     
     /* Obtener los encabezados Ethernet e IP del paquete original */
     sr_ethernet_hdr_t *origEthHdr = (sr_ethernet_hdr_t *) ipPacket;
@@ -143,11 +141,6 @@ void sr_send_icmp_error_packet(uint8_t type,
     sr_ip_hdr_t *ipHdr = (sr_ip_hdr_t *) (icmpPacket + sizeof(sr_ethernet_hdr_t));
     /*depende del tipo de mensaje*/
     sr_icmp_t3_hdr_t *icmpHdr = (sr_icmp_t3_hdr_t *) (icmpPacket + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t));
-
-    /* Destination net unreachable (type 3, code 0) */
-    /* Destination host unreachable (type 3, code 1) */
-    /* Port unreachable (type 3, code 3) */
-    /* Time exceeded (type 11, code 0) */
     
     /* -- Enviar el paquete ICMP -- */
 
@@ -156,7 +149,6 @@ void sr_send_icmp_error_packet(uint8_t type,
         return;
     }
 
-    printf("Se genero un ICMP de error\n");
     struct sr_rt* rt_entry = sr->routing_table;
 
     while(rt_entry != NULL && (rt_entry->mask.s_addr & ipDst) != rt_entry->dest.s_addr) {
@@ -257,17 +249,6 @@ void sr_send_icmp_error_packet(uint8_t type,
             }
             return;
         }
-
-  /*----------------------------------------------------*/
-
-  /*
-  printf("$$$ -> Imprimir cabezales antes de enviar el paquete ICMP error.\n");
-  struct sr_rt* match = longest_prefix_match(sr, ipDst);
-  printf("Interface: %s\n",  match->interface);
-  sr_send_packet(sr, icmpPacket, icmpPacketLen, match->interface);
-  free(icmpPacket);
-  printf("$$$ -> Sending error icmp.\n");
-  */
 } /* -- sr_send_icmp_error_packet -- */
 }
 
@@ -410,7 +391,7 @@ void sr_handle_ip_packet(struct sr_instance *sr,
         struct sr_rt *match2 = longest_prefix_match(sr, ipHdr->ip_dst);
 
         /* No hay coincidencia en la tabla de enrutamiento */
-        if (!match2) {
+        if (match2 == NULL) {
             printf("**** -> No matching route, sending ICMP net unreachable.\n");
             sr_send_icmp_error_packet(3, 0, sr, ipHdr->ip_src, packet);
             printf("$$$ -> Sent sr_send_icmp_error_packet complete ICMP net unreachable.\n");
@@ -446,19 +427,15 @@ void sr_handle_ip_packet(struct sr_instance *sr,
 
                 /* Solicitar ARP si no hay coincidencia y poner el paquete en espera */
                 printf("**** -> No ARP entry, sending ARP request and queueing packet.\n");
-
                 struct sr_arpreq *arpReq = NULL;  
 
                 if (match2->gw.s_addr == htonl(INADDR_ANY)) {
-                    printf("-------------DEFAULT ROUTE-------------\n");
                     arpReq = sr_arpcache_queuereq(&(sr->cache), ipHdr->ip_dst, packet, len, match2->interface);
                 } else {
-                    printf("-------------NEXT ROUTE-------------\n");
                     arpReq = sr_arpcache_queuereq(&(sr->cache), match2->gw.s_addr, packet, len, match2->interface);
                 }
 
                 if (arpReq) {
-                    printf("---------------- HANDLING ARP REQ ----------------------\n");
                     handle_arpreq(sr, arpReq);
                 }
                 return;
