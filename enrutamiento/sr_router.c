@@ -152,7 +152,9 @@ void sr_send_icmp_error_packet(uint8_t type,
     /* -- Enviar el paquete ICMP -- */
 
     struct sr_rt* match = longest_prefix_match(sr, ipDst);
-    printf("Interface: %s\n",  match->interface);
+    if(match == NULL){
+        return;
+    }
 
     printf("Se genero un ICMP de error\n");
     struct sr_rt* rt_entry = sr->routing_table;
@@ -330,7 +332,7 @@ void sr_handle_ip_packet(struct sr_instance *sr,
                 struct sr_rt *match = longest_prefix_match(sr, ipHdr->ip_dst);
 
                 /* No hay coincidencia en la tabla de enrutamiento */
-                if (!match) {
+                if (match == NULL) {
                     printf("**** -> No matching route, sending ICMP net unreachable.\n");
                     sr_send_icmp_error_packet(3, 0, sr, ipHdr->ip_src, packet);
                     printf("$$$ -> Sent sr_send_icmp_error_packet complete ICMP net unreachable.\n");
